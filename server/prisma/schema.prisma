@@ -1,0 +1,64 @@
+// Prisma schema for zerossh-server
+// Zero-knowledge: server stores only client-encrypted blobs + Argon2id salts.
+// The server can never decrypt any SSH keys or host metadata.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  provider        String    @default("password")
+  providerId      String?   @map("provider_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  keys  Key[]
+  hosts Host[]
+
+  @@map("users")
+}
+
+// SSH keys — private key is AES-256-GCM encrypted by the client.
+// Server stores only the ciphertext and the Argon2id salt.
+model Key {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid @map("user_id")
+  label         String?
+  publicKey     String?  @map("public_key")   // optional, not sensitive
+  encryptedData String   @map("encrypted_data") // client-encrypted private key
+  salt          String                           // base64 Argon2id salt
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "keys_user_id_idx")
+  @@map("keys")
+}
+
+// SSH hosts — ALL metadata (hostname, username, port, password, keys) is
+// encrypted by the client. Server stores only an opaque blob + salt.
+model Host {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid @map("user_id")
+  encryptedData String   @map("encrypted_data") // client-encrypted host JSON
+  salt          String                           // base64 Argon2id salt
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "hosts_user_id_idx")
+  @@map("hosts")
+}

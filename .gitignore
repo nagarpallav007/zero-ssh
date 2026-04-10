@@ -1,0 +1,28 @@
+# Environment / secrets
+server/.env
+server/.env.*
+!server/.env.example
+
+# Node / server
+server/node_modules/
+server/dist/
+
+# Flutter / Dart
+client/.dart_tool/
+client/.flutter-plugins
+client/.flutter-plugins-dependencies
+client/build/
+client/.packages
+client/pubspec.lock
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Misc
+*.log
