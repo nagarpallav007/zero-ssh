@@ -8,6 +8,11 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
+    // Hide the native title bar — the app renders its own top bar
+    self.titlebarAppearsTransparent = true
+    self.titleVisibility = .hidden
+    self.styleMask.insert(.fullSizeContentView)
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
