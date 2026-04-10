@@ -2,12 +2,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiClient {
-  ApiClient({http.Client? client, String? baseUrl})
+  ApiClient({http.Client? client, String? baseUrl, this.onUnauthorized})
       : _client = client ?? http.Client(),
         _baseUrl = baseUrl ?? const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:4000');
 
   final http.Client _client;
   final String _baseUrl;
+  final void Function()? onUnauthorized;
 
   Uri _uri(String path) => Uri.parse('$_baseUrl$path');
 
@@ -42,6 +43,7 @@ class ApiClient {
       _uri(path),
       headers: _headers(token: token),
     );
+    if (res.statusCode == 401) onUnauthorized?.call();
     if (res.statusCode >= 400) {
       throw ApiException(res.statusCode, res.body);
     }
@@ -53,6 +55,10 @@ class ApiClient {
       };
 
   Map<String, dynamic> _decode(http.Response res) {
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
+      throw ApiException(res.statusCode, res.body);
+    }
     if (res.statusCode >= 400) {
       throw ApiException(res.statusCode, res.body);
     }
