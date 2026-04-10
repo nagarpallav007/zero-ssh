@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 import '../models/ssh_host.dart';
 import '../services/auth_service.dart';
 import '../theme/terminal_themes.dart';
+import '../widgets/status_pill.dart';
 
 class TerminalPage extends StatefulWidget {
   final SSHHost host;
@@ -62,7 +63,7 @@ class _TerminalPageState extends State<TerminalPage>
                       ? TerminalTargetPlatform.windows
                       : TerminalTargetPlatform.linux,
       onOutput: (data) => _sendInput(data),
-      onResize: (w, h, _pw, _ph) {
+      onResize: (w, h, pw, ph) {
         if (!_isLocal) {
           _session?.resizeTerminal(w, h);
         }
@@ -308,19 +309,10 @@ class _TerminalPageState extends State<TerminalPage>
         Positioned(
           left: 8,
           bottom: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Text(
-              _connecting
-                  ? 'Connecting…'
-                  : (_connected ? 'Connected' : (_error != null ? 'Disconnected' : 'Idle')),
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
+          child: StatusPill(
+            connecting: _connecting,
+            connected: _connected,
+            error: _error,
           ),
         ),
       ],

@@ -100,9 +100,9 @@ class _PassphrasePageState extends State<PassphrasePage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.teal.withOpacity(0.08),
+                        color: Colors.teal.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                        border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

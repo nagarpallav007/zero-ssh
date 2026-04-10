@@ -165,7 +165,7 @@ class _TerminalTabsPageState extends State<TerminalTabsPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
+                    color: Colors.black.withValues(alpha: 0.25),
                     blurRadius: 10,
                     offset: const Offset(0, 6),
                   )
@@ -270,7 +270,7 @@ class _TabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = active ? const Color(0xFF20C997) : const Color(0x3326C6DA);
-    final fg = active ? Colors.black : Colors.white.withOpacity(0.95);
+    final fg = active ? Colors.black : Colors.white.withValues(alpha: 0.95);
 
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -307,7 +307,7 @@ class _TabChip extends StatelessWidget {
                   GestureDetector(
                     onTap: onClose,
                     behavior: HitTestBehavior.opaque,
-                    child: Icon(Icons.close_rounded, size: 16, color: fg.withOpacity(0.9)),
+                    child: Icon(Icons.close_rounded, size: 16, color: fg.withValues(alpha: 0.9)),
                   ),
                 ],
               ],
