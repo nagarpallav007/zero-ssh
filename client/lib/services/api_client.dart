@@ -71,9 +71,37 @@ class ApiClient {
 
 class ApiException implements Exception {
   final int status;
-  final String message;
-  ApiException(this.status, this.message);
+  final String message; // human-readable, parsed from the server JSON body
+
+  ApiException(this.status, String rawBody) : message = _parse(rawBody);
+
+  /// Parses the server error body into a clean human-readable string.
+  ///
+  /// Server returns either:
+  ///   {"error": "some string"}           → plain message
+  ///   {"error": {"field": ["msg", ...]}} → Zod validation errors (flattened)
+  static String _parse(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final error = decoded['error'];
+        if (error is String) return error;
+        if (error is Map<String, dynamic>) {
+          final messages = <String>[];
+          for (final msgs in error.values) {
+            if (msgs is List) {
+              for (final m in msgs) {
+                if (m is String) messages.add(m);
+              }
+            }
+          }
+          if (messages.isNotEmpty) return messages.join('\n');
+        }
+      }
+    } catch (_) {}
+    return body.length < 200 ? body : 'An unexpected error occurred';
+  }
 
   @override
-  String toString() => 'ApiException($status): $message';
+  String toString() => message;
 }
