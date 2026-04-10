@@ -1,28 +1,29 @@
-import 'dart:io' show Platform, File;
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
+
 import '../models/ssh_host.dart';
 import '../models/ssh_key.dart';
 import '../services/host_repository.dart';
 import '../services/key_repository.dart';
+import 'host_form_page.dart';
 
 class HostManagementPage extends StatefulWidget {
-  final bool pickMode;
   final void Function(SSHHost)? onHostOpen;
   final HostRepository hostRepository;
   final KeyRepository keyRepository;
   final bool loggedIn;
   final String? userEmail;
+  final VoidCallback? onLogin; // called when guest taps "Sign In"
 
   const HostManagementPage({
     super.key,
-    this.pickMode = false,
     this.onHostOpen,
     required this.hostRepository,
     required this.keyRepository,
     required this.loggedIn,
     this.userEmail,
+    this.onLogin,
   });
 
   @override
@@ -35,335 +36,129 @@ class _HostManagementPageState extends State<HostManagementPage> {
   bool _loading = false;
   String? _error;
 
-  SSHHost _buildLocalHost() {
-    final currentUser =
-        Platform.environment['USER'] ?? Platform.environment['USERNAME'] ?? 'local';
-    return SSHHost(
-      id: 'local',
-      name: 'Local Terminal',
-      hostnameOrIp: Platform.localHostname,
-      username: currentUser,
-      port: 0,
-      isLocal: true,
-    );
-  }
-
-  List<SSHHost> _attachLocalHost(List<SSHHost> hosts) {
-    final hasLocal = hosts.any((h) => h.isLocal);
-    if (hasLocal) return hosts;
-    return [_buildLocalHost(), ...hosts];
-  }
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _loadHosts();
-    if (widget.loggedIn) {
-      _loadKeys();
-    }
+    _loadData();
   }
 
-  Future<void> _loadKeys() async {
-    try {
-      final keys = await widget.keyRepository.loadKeys();
-      if (mounted) setState(() => _keys = keys);
-    } catch (e) {
-      // swallow errors for now; UI remains functional
-      debugPrint('Error loading keys: $e');
-    }
-  }
-
-  Future<void> _loadHosts() async {
+  Future<void> _loadData() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final loaded = await widget.hostRepository.loadHosts();
-      final withLocal = _attachLocalHost(loaded);
-
-      // IMPORTANT: Check if widget is still mounted before calling setState
-      if (mounted) {
-        setState(() => _hosts = withLocal);
-      }
+      final results = await Future.wait([
+        widget.hostRepository.loadHosts(),
+        if (widget.loggedIn) widget.keyRepository.loadKeys(),
+      ]);
+      if (!mounted) return;
+      final hosts = results[0] as List<SSHHost>;
+      final keys = widget.loggedIn ? results[1] as List<SSHKey> : <SSHKey>[];
+      setState(() {
+        _hosts = _withLocalHost(hosts);
+        _keys = keys;
+      });
     } catch (e) {
-      // Handle any errors that might occur during loading
-      if (mounted) {
-        // You could show an error message or handle the error state here
-        setState(() => _error = 'Error loading hosts: $e');
-      }
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _addOrEditHost({SSHHost? existing}) {
-    if (existing?.isLocal == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local terminal is built-in and cannot be edited.')),
-      );
-      return;
-    }
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final hostCtrl = TextEditingController(text: existing?.hostnameOrIp ?? '');
-    final userCtrl = TextEditingController(text: existing?.username ?? '');
-    final portCtrl = TextEditingController(text: existing?.port.toString() ?? '22');
-    final passwordCtrl = TextEditingController(text: existing?.password ?? '');
-    final keyFileCtrl = TextEditingController(text: existing?.keyFilePath ?? '');
-    final privateKeyCtrl = TextEditingController(text: existing?.privateKey ?? '');
-    String? selectedKeyId = existing?.keyId;
-
-    showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          title: Text(existing == null ? 'Add Host' : 'Edit Host'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                ),
-                TextField(
-                  controller: hostCtrl,
-                  decoration: const InputDecoration(labelText: 'Hostname / IP address'),
-                ),
-                TextField(
-                  controller: userCtrl,
-                  decoration: const InputDecoration(labelText: 'Username'),
-                ),
-                TextField(
-                  controller: portCtrl,
-                  decoration: const InputDecoration(labelText: 'Port'),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                ),
-                TextField(
-                  controller: passwordCtrl,
-                  decoration: const InputDecoration(labelText: 'Password (optional)'),
-                  obscureText: true,
-                ),
-                if (widget.loggedIn && _keys.isNotEmpty)
-                  DropdownButtonFormField<String?>(
-                    value: selectedKeyId,
-                    decoration: const InputDecoration(labelText: 'Use saved key (optional)'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('None')),
-                      ..._keys.map(
-                        (k) => DropdownMenuItem(
-                          value: k.id,
-                          child: Text(k.label ?? 'Key ${k.id.substring(0, 6)}'),
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      setStateDialog(() {
-                        selectedKeyId = val;
-                      });
-                    },
-                  ),
-                TextField(
-                  controller: privateKeyCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Private Key (PEM, optional — creates/updates saved key)',
-                  ),
-                  maxLines: 3,
-                ),
-                Row(
-                  children: [
-                    // Key File Path TextField (readonly, filled from picker)
-                    Expanded(
-                      child: TextField(
-                        controller: keyFileCtrl,
-                        decoration: const InputDecoration(labelText: 'Key File Path (optional)'),
-                        readOnly: true,
-                      ),
-                    ),
-                    IconButton(
-                        tooltip: 'Pick Key File',
-                        icon: const Icon(Icons.folder_open),
-                        onPressed: () async {
-                          try {
-                            final result = await FilePicker.platform.pickFiles(type: FileType.any);
-                            if (result != null && result.files.single.path != null) {
-                              setStateDialog(() {
-                                keyFileCtrl.text = result.files.single.path!;
-                              });
-                            }
-                          } catch (e) {
-                            // Handle file picker errors
-                            print('File picker error: $e');
-                          }
-                        },
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (hostCtrl.text.trim().isEmpty ||
-                    userCtrl.text.trim().isEmpty ||
-                    nameCtrl.text.trim().isEmpty) {
-                  // Simple validation: name, host, and username required
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Name, Hostname/IP, and Username are required.")),
-                  );
-                  return;
-                }
-
-                final newHost = SSHHost(
-                  id: existing?.id ?? '',
-                  name: nameCtrl.text.trim(),
-                  hostnameOrIp: hostCtrl.text.trim(),
-                  username: userCtrl.text.trim(),
-                  port: int.tryParse(portCtrl.text.trim()) ?? 22,
-                  keyId: selectedKeyId,
-                  password: passwordCtrl.text.isNotEmpty ? passwordCtrl.text : null,
-                  keyFilePath: keyFileCtrl.text.isNotEmpty ? keyFileCtrl.text : null,
-                  privateKey: privateKeyCtrl.text.isNotEmpty ? privateKeyCtrl.text : null,
-                );
-
-                // Check mounted before setState
-                if (mounted) {
-                  _persistHost(newHost, existing: existing);
-                }
-                
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+  List<SSHHost> _withLocalHost(List<SSHHost> hosts) {
+    if (hosts.any((h) => h.isLocal)) return hosts;
+    final user = Platform.environment['USER'] ??
+        Platform.environment['USERNAME'] ??
+        'local';
+    return [
+      SSHHost(
+        id: 'local',
+        name: 'Local Terminal',
+        hostnameOrIp: Platform.localHostname,
+        username: user,
+        port: 0,
+        isLocal: true,
       ),
-    );
+      ...hosts,
+    ];
   }
 
-  void _deleteHost(String id) {
-    if (!mounted) return;
-    setState(() => _hosts.removeWhere((h) => h.id == id && !h.isLocal));
-    widget.hostRepository.deleteHost(id).catchError((e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error deleting host: $e')),
-      );
-    });
-  }
-
-  void _openTerminalTabs(SSHHost host) {
-    SSHHost resolvedHost = host;
-    // If the host uses a saved key reference, resolve the decrypted private key
-    if ((host.privateKey == null || host.privateKey!.isEmpty) && host.keyId != null) {
+  void _openHost(SSHHost host) {
+    SSHHost resolved = host;
+    // Resolve saved key reference into transient privateKey field
+    if (host.privateKey == null && host.keyId != null) {
       final key = _keys.cast<SSHKey?>().firstWhere(
         (k) => k?.id == host.keyId,
         orElse: () => null,
       );
       if (key?.decryptedPrivateKey != null) {
-        resolvedHost = host.copyWith(privateKey: key!.decryptedPrivateKey);
+        resolved = host.copyWith(privateKey: key!.decryptedPrivateKey);
       }
     }
-    if (widget.onHostOpen != null) {
-      widget.onHostOpen!(resolvedHost);
-    } else if (widget.pickMode) {
-      Navigator.pop(context, resolvedHost);
-    }
+    widget.onHostOpen?.call(resolved);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('SSH Hosts')),
-      body: Column(
-        children: [
-          if (widget.loggedIn)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  const Icon(Icons.cloud_done, color: Colors.lightGreenAccent),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Synced${widget.userEmail != null ? ' • ${widget.userEmail}' : ''}'),
-                  ),
-                  TextButton.icon(
-                    onPressed: _loadHosts,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Refresh'),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hosts.isEmpty
-                    ? Center(child: Text(_error ?? 'No hosts yet. Add one!'))
-                    : RefreshIndicator(
-                        onRefresh: _loadHosts,
-                        child: ListView.builder(
-                          itemCount: _hosts.length,
-                          itemBuilder: (context, index) {
-                            final host = _hosts[index];
-                            final isLocal = host.isLocal;
-                            final subtitle = isLocal
-                                ? 'Local session (${host.username}@${host.hostnameOrIp})'
-                                : '${host.username}@${host.hostnameOrIp}:${host.port}';
-                            return ListTile(
-                              title: Text(host.name),
-                              subtitle: Text(subtitle),
-                              trailing: isLocal
-                                  ? const Icon(Icons.computer, color: Colors.lightGreenAccent)
-                                  : PopupMenuButton<String>(
-                                      onSelected: (value) {
-                                        if (value == 'edit') {
-                                          _addOrEditHost(existing: host);
-                                        } else if (value == 'delete') {
-                                          _deleteHost(host.id);
-                                        }
-                                      },
-                                      itemBuilder: (ctx) => [
-                                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                        const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                                      ],
-                                    ),
-                              onTap: () => _openTerminalTabs(host),
-                            );
-                          },
-                        ),
-                      ),
+  Future<void> _openForm({SSHHost? existing}) async {
+    if (existing?.isLocal == true) return;
+
+    final result = await Navigator.of(context).push<SSHHost>(
+      MaterialPageRoute(
+        builder: (_) => HostFormPage(
+          existing: existing,
+          savedKeys: _keys,
+          keyRepository: widget.loggedIn ? widget.keyRepository : null,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _persist(result, existing: existing);
+  }
+
+  Future<void> _deleteHost(SSHHost host) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1E2A),
+        title: const Text('Delete Host'),
+        content: Text('Remove "${host.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addOrEditHost(),
-        child: const Icon(Icons.add),
-      ),
     );
+    if (confirm != true) return;
+
+    setState(() => _hosts.removeWhere((h) => h.id == host.id));
+    try {
+      await widget.hostRepository.deleteHost(host.id);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _hosts = _withLocalHost([host, ..._hosts.where((h) => !h.isLocal)]));
+        _showError('Could not delete: $e');
+      }
+    }
   }
 
-  @override
-  void dispose() {
-    // Clean up any resources if needed
-    super.dispose();
-  }
-
-  Future<void> _persistHost(SSHHost newHost, {SSHHost? existing}) async {
+  Future<void> _persist(SSHHost host, {SSHHost? existing}) async {
     setState(() => _loading = true);
     try {
-      final hostToSave = await _attachFileKeyIfNeeded(newHost);
-      SSHHost saved;
+      final SSHHost saved;
       if (existing != null) {
-        saved = await widget.hostRepository.updateHost(hostToSave.copyWith(id: existing.id));
+        saved = await widget.hostRepository.updateHost(host.copyWith(id: existing.id));
       } else {
-        saved = await widget.hostRepository.createHost(hostToSave);
+        saved = await widget.hostRepository.createHost(host);
       }
 
       final nonLocal = _hosts.where((h) => !h.isLocal).toList();
@@ -373,31 +168,231 @@ class _HostManagementPageState extends State<HostManagementPage> {
       } else {
         nonLocal.add(saved);
       }
-
-      setState(() {
-        _hosts = _attachLocalHost(nonLocal);
-      });
+      setState(() => _hosts = _withLocalHost(nonLocal));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving host: $e')),
-      );
+      _showError('Could not save host: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<SSHHost> _attachFileKeyIfNeeded(SSHHost host) async {
-    if ((host.privateKey ?? '').isNotEmpty) return host;
-    if ((host.keyFilePath ?? '').isEmpty) return host;
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  }
 
-    final file = File(host.keyFilePath!);
-    if (!await file.exists()) {
-      throw Exception('Private key file not found: ${host.keyFilePath}');
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0E0F12),
+      body: Column(
+        children: [
+          _banner(),
+          Expanded(child: _body()),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openForm(),
+        backgroundColor: const Color(0xFF20C997),
+        foregroundColor: Colors.black,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _banner() {
+    if (widget.loggedIn) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        color: const Color(0xFF151720),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_done_rounded, color: Color(0xFF20C997), size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Synced${widget.userEmail != null ? ' · ${widget.userEmail}' : ''}',
+                style: const TextStyle(color: Colors.white60, fontSize: 13),
+              ),
+            ),
+            GestureDetector(
+              onTap: _loadData,
+              child: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 18),
+            ),
+          ],
+        ),
+      );
     }
-    final content = await file.readAsString();
-    if (content.trim().isEmpty) {
-      throw Exception('Private key file is empty');
+
+    // Guest mode banner
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: const Color(0xFF1A1C28),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded, color: Colors.white38, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Hosts are local only · Sign in to sync',
+              style: TextStyle(color: Colors.white38, fontSize: 13),
+            ),
+          ),
+          if (widget.onLogin != null)
+            TextButton(
+              onPressed: widget.onLogin,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF20C997),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
     }
-    return host.copyWith(privateKey: content);
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+            const SizedBox(height: 12),
+            TextButton(onPressed: _loadData, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+    if (_hosts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.dns_rounded, size: 48, color: Colors.white12),
+            const SizedBox(height: 12),
+            const Text('No hosts yet', style: TextStyle(color: Colors.white38)),
+            const SizedBox(height: 4),
+            const Text(
+              'Tap + to add your first host',
+              style: TextStyle(color: Colors.white24, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      color: const Color(0xFF20C997),
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: _hosts.length,
+        separatorBuilder: (_, __) =>
+            const Divider(height: 1, indent: 72, color: Color(0x14FFFFFF)),
+        itemBuilder: (_, i) => _hostTile(_hosts[i]),
+      ),
+    );
+  }
+
+  Widget _hostTile(SSHHost host) {
+    final isLocal = host.isLocal;
+    final subtitle = isLocal
+        ? '${host.username}@${host.hostnameOrIp}'
+        : '${host.username}@${host.hostnameOrIp}:${host.port}';
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: _HostAvatar(name: host.name, isLocal: isLocal),
+      title: Text(
+        host.name,
+        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(color: Colors.white38, fontSize: 13),
+      ),
+      trailing: isLocal
+          ? null
+          : PopupMenuButton<_HostAction>(
+              icon: const Icon(Icons.more_horiz, color: Colors.white38),
+              color: const Color(0xFF1C1E2A),
+              onSelected: (action) {
+                if (action == _HostAction.edit) _openForm(existing: host);
+                if (action == _HostAction.delete) _deleteHost(host);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _HostAction.edit,
+                  child: Text('Edit'),
+                ),
+                PopupMenuItem(
+                  value: _HostAction.delete,
+                  child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                ),
+              ],
+            ),
+      onTap: () => _openHost(host),
+    );
+  }
+}
+
+enum _HostAction { edit, delete }
+
+class _HostAvatar extends StatelessWidget {
+  final String name;
+  final bool isLocal;
+
+  const _HostAvatar({required this.name, required this.isLocal});
+
+  Color get _color {
+    if (isLocal) return const Color(0xFF20C997);
+    final colors = [
+      const Color(0xFF4C8BF5),
+      const Color(0xFFE27C54),
+      const Color(0xFF9B59B6),
+      const Color(0xFF1ABC9C),
+      const Color(0xFFE74C3C),
+      const Color(0xFF3498DB),
+    ];
+    return colors[name.codeUnitAt(0) % colors.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _color.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _color.withOpacity(0.35)),
+      ),
+      child: isLocal
+          ? Icon(Icons.computer_rounded, color: _color, size: 20)
+          : Center(
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: _color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+    );
   }
 }
