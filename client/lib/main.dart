@@ -23,7 +23,7 @@ class ZeroSSHApp extends StatefulWidget {
 }
 
 class _ZeroSSHAppState extends State<ZeroSSHApp> {
-  final _apiClient = ApiClient();
+  late final ApiClient _apiClient = ApiClient(onUnauthorized: _onLogout);
   late final AuthService _authService = AuthService(apiClient: _apiClient);
   late final HostRepository _hostRepository =
       HostRepository(apiClient: _apiClient, authService: _authService);
