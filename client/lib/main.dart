@@ -140,9 +140,14 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       loggedIn: _session != null,
       userEmail: _session?.email,
       onLogout: _onLogout,
+      onLogin: _guestMode ? _onRequestLogin : null,
       appearance: _appearance,
       onAppearanceChanged: _updateAppearance,
     );
+  }
+
+  void _onRequestLogin() {
+    setState(() => _guestMode = false);
   }
 
   void _updateAppearance(TerminalAppearance a) async {

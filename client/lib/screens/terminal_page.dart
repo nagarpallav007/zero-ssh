@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform, Process, File;
+import 'dart:io' show Platform, Process;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -122,15 +122,7 @@ class _TerminalPageState extends State<TerminalPage>
         h.privateKey!,
         (h.password?.isNotEmpty ?? false) ? h.password : null,
       );
-    } else if ((h.keyFilePath ?? '').isNotEmpty) {
-      final keyFile = File(h.keyFilePath!);
-      if (!await keyFile.exists()) {
-        throw Exception('Private key file not found: ${h.keyFilePath}');
-      }
-      keyPairs = SSHKeyPair.fromPem(
-        await keyFile.readAsString(),
-        (h.password?.isNotEmpty ?? false) ? h.password : null,
-      );
+    // keyFilePath removed — keys are always resolved via keyId before connection
     }
 
     _client = SSHClient(
