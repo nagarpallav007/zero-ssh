@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import '../models/ssh_host.dart';
 import 'terminal_page.dart';
@@ -203,6 +205,10 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // On macOS with fullSizeContentView the traffic-light buttons occupy ~80px
+    // on the left — we push our content past them.
+    final leftInset = Platform.isMacOS ? 80.0 : 14.0;
+
     return Container(
       height: 52,
       decoration: const BoxDecoration(
@@ -211,25 +217,30 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Brand
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.terminal_rounded, color: Color(0xFF20C997), size: 18),
-                SizedBox(width: 6),
-                Text(
-                  'ZeroSSH',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    letterSpacing: 0.3,
+          // macOS traffic-light clearance + brand
+          SizedBox(
+            width: leftInset,
+            child: Platform.isMacOS
+                ? null // empty space for traffic lights
+                : const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.terminal_rounded, color: Color(0xFF20C997), size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'ZeroSSH',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
           ),
 
           // Vertical divider
@@ -332,42 +343,68 @@ class _UserArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final display = email != null
-        ? (email!.length > 20 ? '${email!.substring(0, 18)}…' : email!)
-        : 'Account';
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 26,
-            height: 26,
+      child: Tooltip(
+        message: 'Account',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _showMenu(context),
+          child: Container(
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
-              color: const Color(0xFF20C997).withOpacity(0.18),
+              color: const Color(0xFF20C997).withOpacity(0.15),
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xFF20C997).withOpacity(0.4)),
             ),
-            child: const Icon(Icons.person_rounded, size: 14, color: Color(0xFF20C997)),
+            child: const Icon(Icons.person_rounded, size: 16, color: Color(0xFF20C997)),
           ),
-          const SizedBox(width: 6),
-          Text(display, style: const TextStyle(color: Colors.white60, fontSize: 12)),
-          const SizedBox(width: 4),
-          Tooltip(
-            message: 'Logout',
-            child: InkWell(
-              onTap: onLogout,
-              borderRadius: BorderRadius.circular(4),
-              child: const Padding(
-                padding: EdgeInsets.all(4),
-                child: Icon(Icons.logout_rounded, size: 15, color: Colors.white38),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  void _showMenu(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox;
+    final offset = box.localToGlobal(Offset.zero);
+    final size = box.size;
+
+    final choice = await showMenu<String>(
+      context: context,
+      color: const Color(0xFF1C1E2A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height + 4,
+        offset.dx + size.width,
+        0,
+      ),
+      items: [
+        PopupMenuItem(
+          enabled: false,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            email ?? 'Account',
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        const PopupMenuItem(
+          value: 'logout',
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded, size: 15, color: Colors.redAccent),
+              SizedBox(width: 10),
+              Text('Log out', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (choice == 'logout') onLogout();
   }
 }
 
