@@ -3,12 +3,8 @@ import { z } from 'zod';
 export const emailSchema = z.string().trim().toLowerCase().email().max(254);
 export const passwordSchema = z
   .string()
-  .min(12, 'Password must be at least 12 characters')
-  .max(128, 'Password too long')
-  .regex(/[A-Z]/, 'Must include upper-case letter')
-  .regex(/[a-z]/, 'Must include lower-case letter')
-  .regex(/[0-9]/, 'Must include number')
-  .regex(/[!@#$%^&*(),.?":{}|<>]/, 'Must include symbol');
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password too long');
 
 // Keys: server stores opaque client-encrypted blobs + Argon2id salt
 export const keyCreateSchema = z.object({
