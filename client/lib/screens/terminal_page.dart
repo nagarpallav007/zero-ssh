@@ -10,7 +10,6 @@ import 'package:xterm/xterm.dart';
 import '../models/ssh_host.dart';
 import '../services/auth_service.dart';
 import '../theme/terminal_themes.dart';
-import '../widgets/status_pill.dart';
 
 class TerminalPage extends StatefulWidget {
   final SSHHost host;
@@ -40,10 +39,6 @@ class _TerminalPageState extends State<TerminalPage>
   Process? _localProcess;
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
-
-  bool _connecting = true;
-  bool _connected = false;
-  String? _error;
 
   bool get _isLocal => widget.host.isLocal;
 
@@ -75,11 +70,6 @@ class _TerminalPageState extends State<TerminalPage>
   }
 
   Future<void> _connect() async {
-    setState(() {
-      _connecting = true;
-      _error = null;
-    });
-
     try {
       if (_isLocal) {
         _terminal.write('Starting local shell…\r\n');
@@ -87,23 +77,9 @@ class _TerminalPageState extends State<TerminalPage>
       } else {
         await _connectSsh(widget.host);
       }
-
-      if (mounted) {
-        setState(() {
-          _connecting = false;
-          _connected = true;
-        });
-      }
       _terminal.write('✓ Connected\r\n');
     } catch (e) {
       _terminal.write('✗ Connection failed: $e\r\n');
-      if (mounted) {
-        setState(() {
-          _connecting = false;
-          _connected = false;
-          _error = e.toString();
-        });
-      }
     }
   }
 
@@ -177,7 +153,7 @@ class _TerminalPageState extends State<TerminalPage>
     unawaited(process.exitCode.then((code) {
       if (!mounted) return;
       _terminal.write('\r\n[local shell exited ($code)]\r\n');
-      setState(() => _connected = false);
+      _terminal.write('\r\n[Reconnect to continue]\r\n');
     }));
   }
 
@@ -251,7 +227,7 @@ class _TerminalPageState extends State<TerminalPage>
       } catch (_) {}
       _client = null;
     }
-    if (mounted) setState(() => _connected = false);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -307,15 +283,6 @@ class _TerminalPageState extends State<TerminalPage>
                   break;
               }
             },
-          ),
-        ),
-        Positioned(
-          left: 8,
-          bottom: 8,
-          child: StatusPill(
-            connecting: _connecting,
-            connected: _connected,
-            error: _error,
           ),
         ),
       ],
