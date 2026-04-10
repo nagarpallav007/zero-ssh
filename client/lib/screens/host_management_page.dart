@@ -90,16 +90,31 @@ class _HostManagementPageState extends State<HostManagementPage> {
 
   void _openHost(SSHHost host) {
     SSHHost resolved = host;
-    // Resolve saved key reference into transient privateKey field
+
+    // Resolve saved key reference into the transient privateKey field
     if (host.privateKey == null && host.keyId != null) {
       final key = _keys.cast<SSHKey?>().firstWhere(
         (k) => k?.id == host.keyId,
         orElse: () => null,
       );
-      if (key?.decryptedPrivateKey != null) {
-        resolved = host.copyWith(privateKey: key!.decryptedPrivateKey);
+
+      if (key == null) {
+        _showError('SSH key not found. Try refreshing the host list.');
+        return;
       }
+
+      if (key.decryptedPrivateKey == null) {
+        // Key exists but decryption failed — passphrase was likely wrong
+        _showError(
+          'Could not decrypt the SSH key.\n'
+          'Your passphrase may be incorrect. Log out and log back in to re-enter it.',
+        );
+        return;
+      }
+
+      resolved = host.copyWith(privateKey: key.decryptedPrivateKey);
     }
+
     widget.onHostOpen?.call(resolved);
   }
 

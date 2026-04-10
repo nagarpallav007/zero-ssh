@@ -120,16 +120,27 @@ class _TerminalPageState extends State<TerminalPage>
     if ((h.privateKey ?? '').isNotEmpty) {
       keyPairs = SSHKeyPair.fromPem(
         h.privateKey!,
+        // Use password as key passphrase only if the key is passphrase-protected
         (h.password?.isNotEmpty ?? false) ? h.password : null,
       );
-    // keyFilePath removed — keys are always resolved via keyId before connection
+    }
+
+    // Guard: if no key and no password, fail early with a clear message
+    final hasPassword = h.password != null && h.password!.isNotEmpty;
+    if (keyPairs == null && !hasPassword) {
+      throw Exception(
+        'No authentication method available.\n'
+        'Add a password or an SSH key to this host.',
+      );
     }
 
     _client = SSHClient(
       socket,
       username: h.username,
       identities: keyPairs,
-      onPasswordRequest: () => h.password ?? '',
+      // Return null (not empty string) when no password — prevents dartssh2
+      // from attempting password auth with an empty string and failing.
+      onPasswordRequest: hasPassword ? () => h.password! : null,
     );
 
     _session = await _client!.shell(
