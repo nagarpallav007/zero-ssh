@@ -416,13 +416,13 @@ class _Field extends StatelessWidget {
       children: [
         Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: isCompact ? AppSpacing.sm : AppSpacing.xs,
+            horizontal: AppSpacing.xl,
+            vertical: isCompact ? AppSpacing.md : AppSpacing.sm,
           ),
           child: content,
         ),
         if (!isLast)
-          const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
+          const Divider(height: 1, indent: AppSpacing.xl, color: AppColors.border),
       ],
     );
   }
@@ -445,7 +445,7 @@ class _AuthModeRow extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
+        horizontal: AppSpacing.xl,
         vertical: AppSpacing.md,
       ),
       child: isCompact
@@ -570,11 +570,11 @@ class _KeyDropdownRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
+        const Divider(height: 1, indent: AppSpacing.xl, color: AppColors.border),
         Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.xs,
+            horizontal: AppSpacing.xl,
+            vertical: AppSpacing.sm,
           ),
           child: Row(
             children: [
@@ -604,9 +604,9 @@ class _KeyDropdownRow extends StatelessWidget {
             ],
           ),
         ),
-        const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
+        const Divider(height: 1, indent: AppSpacing.xl, color: AppColors.border),
         ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           leading: const Icon(Icons.add_circle_outline, color: AppColors.accent, size: 20),
           title: const Text(
             'Add new key…',
