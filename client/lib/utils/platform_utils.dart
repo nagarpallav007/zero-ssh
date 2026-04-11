@@ -36,8 +36,8 @@ abstract final class PlatformUtils {
   /// Returns 0 on all other platforms (including mobile).
   static double titleBarInset(BuildContext context) {
     if (!Platform.isMacOS) return 0;
-    // macOS traffic lights occupy roughly 80px on the left
-    return 80;
+    // macOS traffic lights occupy ~68px; 72 gives clean clearance
+    return 72;
   }
 
   /// Maps the current platform to the xterm TerminalTargetPlatform enum.

@@ -213,11 +213,8 @@ class _TopBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // ── Traffic light clearance (macOS) + Brand ──
+          // ── Traffic light clearance (macOS) ──
           SizedBox(width: PlatformUtils.titleBarInset(context)),
-          _BrandMark(compact: compact),
-
-          if (!compact) const _VDivider(),
 
           // ── Scrollable tabs + add button ──
           Expanded(
@@ -255,38 +252,6 @@ class _TopBar extends StatelessWidget {
           else if (onLogin != null)
             _SignInButton(onLogin: onLogin!),
           const SizedBox(width: AppSpacing.sm),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Brand mark ────────────────────────────────────────────────────────────────
-
-class _BrandMark extends StatelessWidget {
-  final bool compact;
-  const _BrandMark({required this.compact});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.terminal_rounded, color: AppColors.accent, size: 16),
-          if (!compact) ...[
-            const SizedBox(width: 6),
-            const Text(
-              'ZeroSSH',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ],
         ],
       ),
     );

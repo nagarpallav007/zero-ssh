@@ -23,12 +23,14 @@ class HostFormPage extends StatefulWidget {
   final SSHHost? existing;
   final List<SSHKey> savedKeys;
   final KeyRepository? keyRepository; // null in guest mode (SSH key auth hidden)
+  final bool asDialog; // true when shown as a desktop dialog overlay
 
   const HostFormPage({
     super.key,
     this.existing,
     required this.savedKeys,
     this.keyRepository,
+    this.asDialog = false,
   });
 
   @override
@@ -118,15 +120,153 @@ class _HostFormPageState extends State<HostFormPage> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  List<Widget> _buildFormFields() {
+    return [
+      _Section(
+        children: [
+          _Field(
+            label: 'Label',
+            controller: _labelCtrl,
+            hint: 'My Server',
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Label is required' : null,
+          ),
+          _Field(
+            label: 'Hostname / IP',
+            controller: _hostCtrl,
+            hint: '192.168.1.1',
+            keyboardType: TextInputType.url,
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Hostname is required' : null,
+          ),
+          _Field(
+            label: 'Username',
+            controller: _userCtrl,
+            hint: 'root',
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'Username is required' : null,
+          ),
+          _Field(
+            label: 'Port',
+            controller: _portCtrl,
+            hint: '22',
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            validator: (v) {
+              final p = int.tryParse(v ?? '');
+              if (p == null || p < 1 || p > 65535) {
+                return 'Enter a valid port (1–65535)';
+              }
+              return null;
+            },
+            isLast: true,
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      const _SectionHeader(label: 'AUTHENTICATION'),
+      _Section(
+        children: [
+          _AuthModeRow(
+            mode: _authMode,
+            canUseSshKey: widget.keyRepository != null,
+            onChanged: (m) => setState(() {
+              _authMode = m;
+              if (m != _AuthMode.sshKey) _selectedKeyId = null;
+              if (m != _AuthMode.password) _passwordCtrl.clear();
+            }),
+          ),
+          if (_authMode == _AuthMode.password)
+            _Field(
+              label: 'Password',
+              controller: _passwordCtrl,
+              hint: '••••••••',
+              obscureText: true,
+              isLast: true,
+            ),
+          if (_authMode == _AuthMode.sshKey)
+            _KeyDropdownRow(
+              keys: _keys,
+              selectedId: _selectedKeyId,
+              onChanged: (id) => setState(() => _selectedKeyId = id),
+              onAddNew: _addNewKey,
+            ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.xxxl),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isNew = widget.existing == null;
+    if (widget.asDialog) return _buildDialogContent();
+    return _buildFullPage();
+  }
 
+  Widget _buildDialogContent() {
+    final isNew = widget.existing == null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header row
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, 0,
+          ),
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                isNew ? 'New Host' : 'Edit Host',
+                style: AppTypography.title,
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _save,
+                child: const Text(
+                  'Save',
+                  style: TextStyle(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Flexible(
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              children: _buildFormFields(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullPage() {
+    final isNew = widget.existing == null;
     return Scaffold(
       appBar: AppBar(
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
         ),
         leadingWidth: 80,
         title: Text(isNew ? 'New Host' : 'Edit Host'),
@@ -151,81 +291,8 @@ class _HostFormPageState extends State<HostFormPage> {
           child: Form(
             key: _formKey,
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              children: [
-                _Section(
-                  children: [
-                    _Field(
-                      label: 'Label',
-                      controller: _labelCtrl,
-                      hint: 'My Server',
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Label is required' : null,
-                    ),
-                    _Field(
-                      label: 'Hostname / IP',
-                      controller: _hostCtrl,
-                      hint: '192.168.1.1',
-                      keyboardType: TextInputType.url,
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Hostname is required' : null,
-                    ),
-                    _Field(
-                      label: 'Username',
-                      controller: _userCtrl,
-                      hint: 'root',
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Username is required' : null,
-                    ),
-                    _Field(
-                      label: 'Port',
-                      controller: _portCtrl,
-                      hint: '22',
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (v) {
-                        final p = int.tryParse(v ?? '');
-                        if (p == null || p < 1 || p > 65535) {
-                          return 'Enter a valid port (1–65535)';
-                        }
-                        return null;
-                      },
-                      isLast: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                const _SectionHeader(label: 'AUTHENTICATION'),
-                _Section(
-                  children: [
-                    _AuthModeRow(
-                      mode: _authMode,
-                      canUseSshKey: widget.keyRepository != null,
-                      onChanged: (m) => setState(() {
-                        _authMode = m;
-                        if (m != _AuthMode.sshKey) _selectedKeyId = null;
-                        if (m != _AuthMode.password) _passwordCtrl.clear();
-                      }),
-                    ),
-                    if (_authMode == _AuthMode.password)
-                      _Field(
-                        label: 'Password',
-                        controller: _passwordCtrl,
-                        hint: '••••••••',
-                        obscureText: true,
-                        isLast: true,
-                      ),
-                    if (_authMode == _AuthMode.sshKey)
-                      _KeyDropdownRow(
-                        keys: _keys,
-                        selectedId: _selectedKeyId,
-                        onChanged: (id) => setState(() => _selectedKeyId = id),
-                        onAddNew: _addNewKey,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.xxxl),
-              ],
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              children: _buildFormFields(),
             ),
           ),
         ),
@@ -306,7 +373,7 @@ class _Field extends StatelessWidget {
       inputFormatters: inputFormatters,
       validator: validator,
       style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-      textAlign: isCompact ? TextAlign.left : TextAlign.right,
+      textAlign: TextAlign.left,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: AppColors.textTertiary),
@@ -420,11 +487,13 @@ class _AuthModeRow extends StatelessWidget {
             )
           : Row(
               children: [
-                const Text(
-                  'Method',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                const SizedBox(
+                  width: 120,
+                  child: Text(
+                    'Method',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                  ),
                 ),
-                const Spacer(),
                 _ModeChip(
                   label: 'None',
                   active: mode == _AuthMode.none,
@@ -510,7 +579,7 @@ class _KeyDropdownRow extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(
-                width: 100,
+                width: 120,
                 child: Text('Key', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
               ),
               Expanded(
@@ -518,20 +587,15 @@ class _KeyDropdownRow extends StatelessWidget {
                   child: DropdownButton<String?>(
                     value: selectedId,
                     isExpanded: true,
-                    alignment: AlignmentDirectional.centerEnd,
                     dropdownColor: AppColors.surface2,
                     style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
                     hint: const Text(
                       'Select a key',
                       style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
-                      textAlign: TextAlign.right,
                     ),
                     items: keys.map((k) => DropdownMenuItem(
                           value: k.id,
-                          child: Text(
-                            k.label ?? 'Key ${k.id.substring(0, 6)}',
-                            textAlign: TextAlign.right,
-                          ),
+                          child: Text(k.label ?? 'Key ${k.id.substring(0, 6)}'),
                         )).toList(),
                     onChanged: onChanged,
                   ),
