@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/passphrase_manager.dart';
+import '../theme/app_theme.dart';
 
 /// Passphrase entry screen shown after login.
 ///
 /// [isNewUser] = true  → "Create passphrase" mode (confirm field + strength bar).
 /// [isNewUser] = false → "Enter passphrase" mode (single field).
-///
-/// On success, stores the passphrase in [PassphraseManager] and calls [onPassphraseSet].
 class PassphrasePage extends StatefulWidget {
   final bool isNewUser;
   final VoidCallback onPassphraseSet;
@@ -47,9 +46,15 @@ class _PassphrasePageState extends State<PassphrasePage> {
   }
 
   Color _strengthColor(double s) {
-    if (s < 0.4) return Colors.redAccent;
-    if (s < 0.7) return Colors.orangeAccent;
-    return Colors.greenAccent;
+    if (s < 0.4) return AppColors.danger;
+    if (s < 0.7) return AppColors.warning;
+    return AppColors.success;
+  }
+
+  String _strengthLabel(double s) {
+    if (s < 0.4) return 'Weak';
+    if (s < 0.7) return 'Fair';
+    return 'Strong';
   }
 
   void _submit() {
@@ -72,117 +77,160 @@ class _PassphrasePageState extends State<PassphrasePage> {
     final strength = _strength(passphrase);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0F12),
+      backgroundColor: AppColors.surface0,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: Card(
-              color: const Color(0xFF151720),
-              margin: const EdgeInsets.all(16),
+              color: AppColors.surface1,
+              margin: const EdgeInsets.all(AppSpacing.lg),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(AppSpacing.xxl),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Header
                     Row(
                       children: [
-                        const Icon(Icons.lock_outline, color: Colors.tealAccent, size: 28),
-                        const SizedBox(width: 12),
-                        Text(
-                          widget.isNewUser ? 'Create Encryption Passphrase' : 'Enter Encryption Passphrase',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        const Icon(Icons.lock_outline_rounded, color: AppColors.accent, size: 26),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            widget.isNewUser
+                                ? 'Create Encryption Passphrase'
+                                : 'Enter Encryption Passphrase',
+                            style: AppTypography.title,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // Info box
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppSpacing.md),
                       decoration: BoxDecoration(
-                        color: Colors.teal.withValues(alpha: 0.08),
+                        color: AppColors.accent.withValues(alpha: 0.07),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+                        border: Border.all(color: AppColors.accentBorder),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             'Zero-Knowledge Security',
-                            style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            style: TextStyle(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
                           ),
-                          SizedBox(height: 6),
-                          Text(
+                          const SizedBox(height: AppSpacing.xs),
+                          const Text(
                             'Your SSH keys are encrypted on this device using your passphrase before being uploaded. '
                             'The server only stores encrypted data — it can never read your keys or host details. '
                             'Your passphrase never leaves this device.',
-                            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: AppSpacing.xl),
+
+                    // Passphrase field
                     TextField(
                       controller: _passphraseCtrl,
                       obscureText: _obscure,
                       onChanged: (_) => setState(() {}),
+                      textInputAction: widget.isNewUser ? TextInputAction.next : TextInputAction.done,
+                      onSubmitted: widget.isNewUser ? null : (_) => _submit(),
                       decoration: InputDecoration(
                         labelText: widget.isNewUser ? 'New Passphrase' : 'Passphrase',
+                        prefixIcon: const Icon(Icons.key_rounded, size: 18),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                          icon: Icon(
+                            _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            size: 18,
+                          ),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
                     ),
+
+                    // Strength indicator
                     if (widget.isNewUser && passphrase.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       LinearProgressIndicator(
                         value: strength,
                         color: _strengthColor(strength),
-                        backgroundColor: Colors.white12,
-                        minHeight: 4,
+                        backgroundColor: AppColors.border,
+                        minHeight: 3,
                         borderRadius: BorderRadius.circular(2),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
-                        strength < 0.4
-                            ? 'Weak'
-                            : strength < 0.7
-                                ? 'Fair'
-                                : 'Strong',
+                        _strengthLabel(strength),
                         style: TextStyle(color: _strengthColor(strength), fontSize: 12),
                       ),
                     ],
+
+                    // Confirm field
                     if (widget.isNewUser) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.md),
                       TextField(
                         controller: _confirmCtrl,
                         obscureText: _obscure,
-                        decoration: const InputDecoration(labelText: 'Confirm Passphrase'),
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Passphrase',
+                          prefixIcon: Icon(Icons.key_rounded, size: 18),
+                        ),
                       ),
                     ],
+
+                    // Error
                     if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: AppColors.danger, fontSize: 13),
+                      ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: AppSpacing.xl),
+
+                    // Submit
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: _submit,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        child: Text(widget.isNewUser ? 'Set Passphrase' : 'Unlock'),
+                        child: Text(
+                          widget.isNewUser ? 'Set Passphrase' : 'Unlock',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
                     ),
+
+                    // Warning
                     if (widget.isNewUser) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.md),
                       const Text(
                         'Remember this passphrase — it cannot be recovered. '
                         'Without it, your encrypted data cannot be decrypted.',
-                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                        style: TextStyle(color: AppColors.textTertiary, fontSize: 11, height: 1.5),
                         textAlign: TextAlign.center,
                       ),
                     ],

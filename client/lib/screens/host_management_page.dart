@@ -1,11 +1,11 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 
 import '../models/ssh_host.dart';
 import '../models/ssh_key.dart';
 import '../services/host_repository.dart';
 import '../services/key_repository.dart';
+import '../theme/app_theme.dart';
+import '../utils/platform_utils.dart';
 import 'host_form_page.dart';
 
 class HostManagementPage extends StatefulWidget {
@@ -71,15 +71,14 @@ class _HostManagementPageState extends State<HostManagementPage> {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   List<SSHHost> _withLocalHost(List<SSHHost> hosts) {
+    if (!PlatformUtils.supportsLocalShell) return hosts;
     if (hosts.any((h) => h.isLocal)) return hosts;
-    final user = Platform.environment['USER'] ??
-        Platform.environment['USERNAME'] ??
-        'local';
+    final user = PlatformUtils.localUsername ?? 'local';
     return [
       SSHHost(
         id: 'local',
         name: 'Local Terminal',
-        hostnameOrIp: Platform.localHostname,
+        hostnameOrIp: PlatformUtils.localHostname,
         username: user,
         port: 0,
         isLocal: true,
@@ -104,7 +103,6 @@ class _HostManagementPageState extends State<HostManagementPage> {
       }
 
       if (key.decryptedPrivateKey == null) {
-        // Key exists but decryption failed — passphrase was likely wrong
         _showError(
           'Could not decrypt the SSH key.\n'
           'Your passphrase may be incorrect. Log out and log back in to re-enter it.',
@@ -138,7 +136,6 @@ class _HostManagementPageState extends State<HostManagementPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1E2A),
         title: const Text('Delete Host'),
         content: Text('Remove "${host.name}"?'),
         actions: [
@@ -148,7 +145,7 @@ class _HostManagementPageState extends State<HostManagementPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -194,10 +191,7 @@ class _HostManagementPageState extends State<HostManagementPage> {
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: Colors.redAccent,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.surface2),
     );
   }
 
@@ -206,7 +200,6 @@ class _HostManagementPageState extends State<HostManagementPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0F12),
       body: Column(
         children: [
           _banner(),
@@ -215,7 +208,7 @@ class _HostManagementPageState extends State<HostManagementPage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
-        backgroundColor: const Color(0xFF20C997),
+        backgroundColor: AppColors.accent,
         foregroundColor: Colors.black,
         child: const Icon(Icons.add),
       ),
@@ -225,21 +218,24 @@ class _HostManagementPageState extends State<HostManagementPage> {
   Widget _banner() {
     if (widget.loggedIn) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        color: const Color(0xFF151720),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.sm + 2,
+        ),
+        color: AppColors.surface1,
         child: Row(
           children: [
-            const Icon(Icons.cloud_done_rounded, color: Color(0xFF20C997), size: 16),
-            const SizedBox(width: 8),
+            const Icon(Icons.cloud_done_rounded, color: AppColors.accent, size: 16),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 'Synced${widget.userEmail != null ? ' · ${widget.userEmail}' : ''}',
-                style: const TextStyle(color: Colors.white60, fontSize: 13),
+                style: const TextStyle(color: AppColors.textTertiary, fontSize: 13),
               ),
             ),
             GestureDetector(
               onTap: _loadData,
-              child: const Icon(Icons.refresh_rounded, color: Colors.white38, size: 18),
+              child: const Icon(Icons.refresh_rounded, color: AppColors.textTertiary, size: 18),
             ),
           ],
         ),
@@ -248,28 +244,37 @@ class _HostManagementPageState extends State<HostManagementPage> {
 
     // Guest mode banner
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: const Color(0xFF1A1C28),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm + 2,
+      ),
+      color: AppColors.surface1,
       child: Row(
         children: [
-          const Icon(Icons.info_outline_rounded, color: Colors.white38, size: 16),
-          const SizedBox(width: 8),
+          const Icon(Icons.info_outline_rounded, color: AppColors.textTertiary, size: 16),
+          const SizedBox(width: AppSpacing.sm),
           const Expanded(
             child: Text(
               'Hosts are local only · Sign in to sync',
-              style: TextStyle(color: Colors.white38, fontSize: 13),
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 13),
             ),
           ),
           if (widget.onLogin != null)
             TextButton(
               onPressed: widget.onLogin,
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF20C997),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                foregroundColor: AppColors.accent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.xs,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              child: const Text(
+                'Sign In',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
             ),
         ],
       ),
@@ -285,25 +290,44 @@ class _HostManagementPageState extends State<HostManagementPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-            const SizedBox(height: 12),
+            Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            const SizedBox(height: AppSpacing.md),
             TextButton(onPressed: _loadData, child: const Text('Retry')),
           ],
         ),
       );
     }
-    if (_hosts.isEmpty) {
+
+    final userHosts = _hosts.where((h) => !h.isLocal).toList();
+    if (userHosts.isEmpty && !_hosts.any((h) => h.isLocal)) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.dns_rounded, size: 48, color: Colors.white12),
-            const SizedBox(height: 12),
-            const Text('No hosts yet', style: TextStyle(color: Colors.white38)),
-            const SizedBox(height: 4),
+            const Icon(Icons.dns_rounded, size: 56, color: AppColors.textTertiary),
+            const SizedBox(height: AppSpacing.lg),
+            Text('No hosts yet', style: AppTypography.title),
+            const SizedBox(height: AppSpacing.xs),
             const Text(
               'Tap + to add your first host',
-              style: TextStyle(color: Colors.white24, fontSize: 13),
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            ElevatedButton.icon(
+              onPressed: () => _openForm(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xl,
+                  vertical: AppSpacing.md,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Host', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -312,60 +336,102 @@ class _HostManagementPageState extends State<HostManagementPage> {
 
     return RefreshIndicator(
       onRefresh: _loadData,
-      color: const Color(0xFF20C997),
+      color: AppColors.accent,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: _hosts.length,
         separatorBuilder: (_, __) =>
-            const Divider(height: 1, indent: 72, color: Color(0x14FFFFFF)),
-        itemBuilder: (_, i) => _hostTile(_hosts[i]),
+            const Divider(height: 1, color: AppColors.borderSubtle),
+        itemBuilder: (_, i) => _HostCard(
+          host: _hosts[i],
+          onTap: () => _openHost(_hosts[i]),
+          onEdit: _hosts[i].isLocal ? null : () => _openForm(existing: _hosts[i]),
+          onDelete: _hosts[i].isLocal ? null : () => _deleteHost(_hosts[i]),
+        ),
       ),
-    );
-  }
-
-  Widget _hostTile(SSHHost host) {
-    final isLocal = host.isLocal;
-    final subtitle = isLocal
-        ? '${host.username}@${host.hostnameOrIp}'
-        : '${host.username}@${host.hostnameOrIp}:${host.port}';
-
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: _HostAvatar(name: host.name, isLocal: isLocal),
-      title: Text(
-        host.name,
-        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(color: Colors.white38, fontSize: 13),
-      ),
-      trailing: isLocal
-          ? null
-          : PopupMenuButton<_HostAction>(
-              icon: const Icon(Icons.more_horiz, color: Colors.white38),
-              color: const Color(0xFF1C1E2A),
-              onSelected: (action) {
-                if (action == _HostAction.edit) _openForm(existing: host);
-                if (action == _HostAction.delete) _deleteHost(host);
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: _HostAction.edit,
-                  child: Text('Edit'),
-                ),
-                PopupMenuItem(
-                  value: _HostAction.delete,
-                  child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
-                ),
-              ],
-            ),
-      onTap: () => _openHost(host),
     );
   }
 }
 
 enum _HostAction { edit, delete }
+
+// ── Host card ─────────────────────────────────────────────────────────────────
+
+class _HostCard extends StatelessWidget {
+  final SSHHost host;
+  final VoidCallback onTap;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  const _HostCard({
+    required this.host,
+    required this.onTap,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLocal = host.isLocal;
+    final subtitle = isLocal
+        ? '${host.username}@${host.hostnameOrIp}'
+        : '${host.username}@${host.hostnameOrIp}:${host.port}';
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            _HostAvatar(name: host.name, isLocal: isLocal),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    host.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!isLocal && (onEdit != null || onDelete != null))
+              PopupMenuButton<_HostAction>(
+                icon: const Icon(Icons.more_horiz, color: AppColors.textTertiary),
+                onSelected: (action) {
+                  if (action == _HostAction.edit) onEdit?.call();
+                  if (action == _HostAction.delete) onDelete?.call();
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: _HostAction.edit, child: Text('Edit')),
+                  const PopupMenuItem(
+                    value: _HostAction.delete,
+                    child: Text('Delete', style: TextStyle(color: AppColors.danger)),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _HostAvatar extends StatelessWidget {
   final String name;
@@ -374,14 +440,14 @@ class _HostAvatar extends StatelessWidget {
   const _HostAvatar({required this.name, required this.isLocal});
 
   Color get _color {
-    if (isLocal) return const Color(0xFF20C997);
-    final colors = [
-      const Color(0xFF4C8BF5),
-      const Color(0xFFE27C54),
-      const Color(0xFF9B59B6),
-      const Color(0xFF1ABC9C),
-      const Color(0xFFE74C3C),
-      const Color(0xFF3498DB),
+    if (isLocal) return AppColors.accent;
+    const colors = [
+      Color(0xFF4C8BF5),
+      Color(0xFFE27C54),
+      Color(0xFF9B59B6),
+      Color(0xFF1ABC9C),
+      Color(0xFFE74C3C),
+      Color(0xFF3498DB),
     ];
     return colors[name.codeUnitAt(0) % colors.length];
   }
@@ -392,9 +458,9 @@ class _HostAvatar extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: _color.withOpacity(0.18),
+        color: _color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _color.withOpacity(0.35)),
+        border: Border.all(color: _color.withValues(alpha: 0.30)),
       ),
       child: isLocal
           ? Icon(Icons.computer_rounded, color: _color, size: 20)

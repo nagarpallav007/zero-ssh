@@ -43,6 +43,7 @@ dependencies:
   http: ^1.2.2
   google_fonts: ^6.3.3
   cryptography: ^2.7.0
+  flutter_riverpod: ^2.6.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/auth_page.dart';
 import 'screens/passphrase_page.dart';
@@ -8,11 +10,11 @@ import 'services/auth_service.dart';
 import 'services/host_repository.dart';
 import 'services/key_repository.dart';
 import 'services/passphrase_manager.dart';
+import 'theme/app_theme.dart';
 import 'theme/terminal_themes.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  runApp(const ZeroSSHApp());
+  runApp(const ProviderScope(child: ZeroSSHApp()));
 }
 
 class ZeroSSHApp extends StatefulWidget {
@@ -29,7 +31,9 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       HostRepository(apiClient: _apiClient, authService: _authService);
   late final KeyRepository _keyRepository =
       KeyRepository(apiClient: _apiClient, authService: _authService);
-  late TerminalAppearance _appearance = terminalAppearances.first;
+
+  // Default appearance for new tabs (persisted in SharedPreferences)
+  late TerminalAppearance _defaultAppearance = terminalAppearances.first;
 
   AuthSession? _session;
   bool _booting = true;
@@ -47,14 +51,13 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     final sess = await _authService.currentSession();
     final prefs = await SharedPreferences.getInstance();
     final savedKey = prefs.getString('terminal_appearance');
-    // On app restart, passphrase must be re-entered (never persisted).
     final needsPassphrase = sess != null && !PassphraseManager.instance.isSet;
     setState(() {
       _session = sess;
       _booting = false;
-      _appearance = appearanceByKey(savedKey);
+      _defaultAppearance = appearanceByKey(savedKey);
       _passphraseReady = !needsPassphrase;
-      _isFirstLogin = false; // returning user who bootstrapped a saved session
+      _isFirstLogin = false;
     });
   }
 
@@ -63,7 +66,7 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     setState(() {
       _session = sess;
       _guestMode = false;
-      _passphraseReady = false; // force passphrase prompt
+      _passphraseReady = false;
       _isFirstLogin = isNew;
     });
   }
@@ -79,8 +82,14 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     });
   }
 
-  void _onPassphraseSet() {
-    setState(() => _passphraseReady = true);
+  void _onPassphraseSet() => setState(() => _passphraseReady = true);
+
+  void _onRequestLogin() => setState(() => _guestMode = false);
+
+  void _onDefaultAppearanceChanged(TerminalAppearance a) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('terminal_appearance', a.key);
+    setState(() => _defaultAppearance = a);
   }
 
   @override
@@ -88,30 +97,21 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     return MaterialApp(
       title: 'ZeroSSH',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0E0F12),
-        inputDecorationTheme: const InputDecorationTheme(
-          filled: true,
-          fillColor: Color(0xFF1E2029),
-          border: OutlineInputBorder(),
-          labelStyle: TextStyle(color: Colors.white70),
-        ),
-      ),
+      theme: buildAppTheme(),
       home: _buildHome(),
     );
   }
 
   Widget _buildHome() {
     if (_booting) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: AppColors.surface0,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
-    // Guest mode — skip auth and passphrase; no sync available
-    if (_guestMode) {
-      return _mainTabs();
-    }
+    if (_guestMode) return _mainTabs();
 
-    // Not authenticated → show auth page
     if (_session == null) {
       return AuthPage(
         authService: _authService,
@@ -120,7 +120,6 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       );
     }
 
-    // Authenticated but passphrase not entered yet → show passphrase page
     if (!_passphraseReady) {
       return PassphrasePage(
         isNewUser: _isFirstLogin,
@@ -128,7 +127,6 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       );
     }
 
-    // Authenticated + passphrase set → show main app
     return _mainTabs();
   }
 
@@ -141,20 +139,8 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       userEmail: _session?.email,
       onLogout: _onLogout,
       onLogin: _guestMode ? _onRequestLogin : null,
-      appearance: _appearance,
-      onAppearanceChanged: _updateAppearance,
+      defaultAppearance: _defaultAppearance,
+      onDefaultAppearanceChanged: _onDefaultAppearanceChanged,
     );
-  }
-
-  void _onRequestLogin() {
-    setState(() => _guestMode = false);
-  }
-
-  void _updateAppearance(TerminalAppearance a) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('terminal_appearance', a.key);
-    setState(() {
-      _appearance = a;
-    });
   }
 }

@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../models/ssh_host.dart';
 import '../models/ssh_key.dart';
 import '../services/key_repository.dart';
+import '../theme/app_theme.dart';
 
 enum _AuthMode { none, password, sshKey }
 
@@ -45,7 +47,6 @@ class _HostFormPageState extends State<HostFormPage> {
   _AuthMode _authMode = _AuthMode.none;
   String? _selectedKeyId;
   List<SSHKey> _keys = [];
-  bool _saving = false;
 
   @override
   void initState() {
@@ -104,10 +105,6 @@ class _HostFormPageState extends State<HostFormPage> {
     final result = await showModalBottomSheet<SSHKey>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1C1E2A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) => _AddKeySheet(keyRepository: widget.keyRepository!),
     );
 
@@ -126,120 +123,111 @@ class _HostFormPageState extends State<HostFormPage> {
     final isNew = widget.existing == null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0F12),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF151720),
-        elevation: 0,
         leading: TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
         ),
         leadingWidth: 80,
-        title: Text(
-          isNew ? 'New Host' : 'Edit Host',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
+        title: Text(isNew ? 'New Host' : 'Edit Host'),
         centerTitle: true,
         actions: [
-          _saving
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : TextButton(
-                  onPressed: _save,
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(
-                      color: Color(0xFF20C997),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
+          TextButton(
+            onPressed: _save,
+            child: const Text(
+              'Save',
+              style: TextStyle(
+                color: AppColors.accent,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          children: [
-            _Section(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 24),
               children: [
-                _Field(
-                  label: 'Label',
-                  controller: _labelCtrl,
-                  hint: 'My Server',
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Label is required' : null,
+                _Section(
+                  children: [
+                    _Field(
+                      label: 'Label',
+                      controller: _labelCtrl,
+                      hint: 'My Server',
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Label is required' : null,
+                    ),
+                    _Field(
+                      label: 'Hostname / IP',
+                      controller: _hostCtrl,
+                      hint: '192.168.1.1',
+                      keyboardType: TextInputType.url,
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Hostname is required' : null,
+                    ),
+                    _Field(
+                      label: 'Username',
+                      controller: _userCtrl,
+                      hint: 'root',
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Username is required' : null,
+                    ),
+                    _Field(
+                      label: 'Port',
+                      controller: _portCtrl,
+                      hint: '22',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      validator: (v) {
+                        final p = int.tryParse(v ?? '');
+                        if (p == null || p < 1 || p > 65535) {
+                          return 'Enter a valid port (1–65535)';
+                        }
+                        return null;
+                      },
+                      isLast: true,
+                    ),
+                  ],
                 ),
-                _Field(
-                  label: 'Hostname / IP',
-                  controller: _hostCtrl,
-                  hint: '192.168.1.1',
-                  keyboardType: TextInputType.url,
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Hostname is required' : null,
+                const SizedBox(height: AppSpacing.sm),
+                const _SectionHeader(label: 'AUTHENTICATION'),
+                _Section(
+                  children: [
+                    _AuthModeRow(
+                      mode: _authMode,
+                      canUseSshKey: widget.keyRepository != null,
+                      onChanged: (m) => setState(() {
+                        _authMode = m;
+                        if (m != _AuthMode.sshKey) _selectedKeyId = null;
+                        if (m != _AuthMode.password) _passwordCtrl.clear();
+                      }),
+                    ),
+                    if (_authMode == _AuthMode.password)
+                      _Field(
+                        label: 'Password',
+                        controller: _passwordCtrl,
+                        hint: '••••••••',
+                        obscureText: true,
+                        isLast: true,
+                      ),
+                    if (_authMode == _AuthMode.sshKey)
+                      _KeyDropdownRow(
+                        keys: _keys,
+                        selectedId: _selectedKeyId,
+                        onChanged: (id) => setState(() => _selectedKeyId = id),
+                        onAddNew: _addNewKey,
+                      ),
+                  ],
                 ),
-                _Field(
-                  label: 'Username',
-                  controller: _userCtrl,
-                  hint: 'root',
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Username is required' : null,
-                ),
-                _Field(
-                  label: 'Port',
-                  controller: _portCtrl,
-                  hint: '22',
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  validator: (v) {
-                    final p = int.tryParse(v ?? '');
-                    if (p == null || p < 1 || p > 65535) return 'Enter a valid port (1–65535)';
-                    return null;
-                  },
-                  isLast: true,
-                ),
+                const SizedBox(height: AppSpacing.xxxl),
               ],
             ),
-            const SizedBox(height: 8),
-            _SectionHeader(label: 'AUTHENTICATION'),
-            _Section(
-              children: [
-                _AuthModeRow(
-                  mode: _authMode,
-                  canUseSshKey: widget.keyRepository != null,
-                  onChanged: (m) => setState(() {
-                    _authMode = m;
-                    if (m != _AuthMode.sshKey) _selectedKeyId = null;
-                    if (m != _AuthMode.password) _passwordCtrl.clear();
-                  }),
-                ),
-                if (_authMode == _AuthMode.password)
-                  _Field(
-                    label: 'Password',
-                    controller: _passwordCtrl,
-                    hint: '••••••••',
-                    obscureText: true,
-                    isLast: true,
-                  ),
-                if (_authMode == _AuthMode.sshKey) ...[
-                  _KeyDropdownRow(
-                    keys: _keys,
-                    selectedId: _selectedKeyId,
-                    onChanged: (id) => setState(() => _selectedKeyId = id),
-                    onAddNew: _addNewKey,
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 32),
-          ],
+          ),
         ),
       ),
     );
@@ -255,13 +243,13 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      padding: const EdgeInsets.fromLTRB(20, AppSpacing.sm, 20, AppSpacing.xs),
       child: Text(
         label,
         style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: Colors.white38,
+          color: AppColors.textTertiary,
           letterSpacing: 1.2,
         ),
       ),
@@ -276,9 +264,9 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       decoration: BoxDecoration(
-        color: const Color(0xFF151720),
+        color: AppColors.surface1,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: children),
@@ -309,43 +297,65 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = AppBreakpoints.of(context) == LayoutClass.compact;
+
+    final formField = TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      validator: validator,
+      style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+      textAlign: isCompact ? TextAlign.left : TextAlign.right,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: AppColors.textTertiary),
+        border: InputBorder.none,
+        filled: false,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        errorStyle: const TextStyle(fontSize: 11),
+      ),
+    );
+
+    final content = isCompact
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              formField,
+            ],
+          )
+        : Row(
+            children: [
+              SizedBox(
+                width: 120,
+                child: Text(
+                  label,
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                ),
+              ),
+              Expanded(child: formField),
+            ],
+          );
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 100,
-                child: Text(
-                  label,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ),
-              Expanded(
-                child: TextFormField(
-                  controller: controller,
-                  obscureText: obscureText,
-                  keyboardType: keyboardType,
-                  inputFormatters: inputFormatters,
-                  validator: validator,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: hint,
-                    hintStyle: const TextStyle(color: Colors.white24),
-                    border: InputBorder.none,
-                    filled: false,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                    errorStyle: const TextStyle(fontSize: 11),
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
+          padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: isCompact ? AppSpacing.sm : AppSpacing.xs,
           ),
+          child: content,
         ),
         if (!isLast)
-          const Divider(height: 1, indent: 16, color: Color(0x18FFFFFF)),
+          const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
       ],
     );
   }
@@ -364,33 +374,78 @@ class _AuthModeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = AppBreakpoints.of(context) == LayoutClass.compact;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          const Text('Method', style: TextStyle(color: Colors.white70, fontSize: 14)),
-          const Spacer(),
-          _ModeChip(
-            label: 'None',
-            active: mode == _AuthMode.none,
-            onTap: () => onChanged(_AuthMode.none),
-          ),
-          const SizedBox(width: 8),
-          _ModeChip(
-            label: 'Password',
-            active: mode == _AuthMode.password,
-            onTap: () => onChanged(_AuthMode.password),
-          ),
-          if (canUseSshKey) ...[
-            const SizedBox(width: 8),
-            _ModeChip(
-              label: 'SSH Key',
-              active: mode == _AuthMode.sshKey,
-              onTap: () => onChanged(_AuthMode.sshKey),
-            ),
-          ],
-        ],
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
       ),
+      child: isCompact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Method',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _ModeChip(
+                      label: 'None',
+                      active: mode == _AuthMode.none,
+                      onTap: () => onChanged(_AuthMode.none),
+                    ),
+                    _ModeChip(
+                      label: 'Password',
+                      active: mode == _AuthMode.password,
+                      onTap: () => onChanged(_AuthMode.password),
+                    ),
+                    if (canUseSshKey)
+                      _ModeChip(
+                        label: 'SSH Key',
+                        active: mode == _AuthMode.sshKey,
+                        onTap: () => onChanged(_AuthMode.sshKey),
+                      ),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                const Text(
+                  'Method',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                ),
+                const Spacer(),
+                _ModeChip(
+                  label: 'None',
+                  active: mode == _AuthMode.none,
+                  onTap: () => onChanged(_AuthMode.none),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _ModeChip(
+                  label: 'Password',
+                  active: mode == _AuthMode.password,
+                  onTap: () => onChanged(_AuthMode.password),
+                ),
+                if (canUseSshKey) ...[
+                  const SizedBox(width: AppSpacing.sm),
+                  _ModeChip(
+                    label: 'SSH Key',
+                    active: mode == _AuthMode.sshKey,
+                    onTap: () => onChanged(_AuthMode.sshKey),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -410,16 +465,16 @@ class _ModeChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF20C997) : const Color(0xFF1E2029),
+          color: active ? AppColors.accent : AppColors.surface2,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: active ? const Color(0xFF20C997) : const Color(0x30FFFFFF),
+            color: active ? AppColors.accent : AppColors.border,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active ? Colors.black : Colors.white70,
+            color: active ? Colors.black : AppColors.textSecondary,
             fontSize: 12,
             fontWeight: active ? FontWeight.w700 : FontWeight.normal,
           ),
@@ -446,14 +501,17 @@ class _KeyDropdownRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Divider(height: 1, indent: 16, color: Color(0x18FFFFFF)),
+        const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.xs,
+          ),
           child: Row(
             children: [
               const SizedBox(
                 width: 100,
-                child: Text('Key', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                child: Text('Key', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
               ),
               Expanded(
                 child: DropdownButtonHideUnderline(
@@ -461,22 +519,20 @@ class _KeyDropdownRow extends StatelessWidget {
                     value: selectedId,
                     isExpanded: true,
                     alignment: AlignmentDirectional.centerEnd,
-                    dropdownColor: const Color(0xFF1C1E2A),
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    dropdownColor: AppColors.surface2,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
                     hint: const Text(
                       'Select a key',
-                      style: TextStyle(color: Colors.white38, fontSize: 14),
+                      style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
                       textAlign: TextAlign.right,
                     ),
-                    items: [
-                      ...keys.map((k) => DropdownMenuItem(
-                            value: k.id,
-                            child: Text(
-                              k.label ?? 'Key ${k.id.substring(0, 6)}',
-                              textAlign: TextAlign.right,
-                            ),
-                          )),
-                    ],
+                    items: keys.map((k) => DropdownMenuItem(
+                          value: k.id,
+                          child: Text(
+                            k.label ?? 'Key ${k.id.substring(0, 6)}',
+                            textAlign: TextAlign.right,
+                          ),
+                        )).toList(),
                     onChanged: onChanged,
                   ),
                 ),
@@ -484,13 +540,13 @@ class _KeyDropdownRow extends StatelessWidget {
             ],
           ),
         ),
-        const Divider(height: 1, indent: 16, color: Color(0x18FFFFFF)),
+        const Divider(height: 1, indent: AppSpacing.lg, color: AppColors.border),
         ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: const Icon(Icons.add_circle_outline, color: Color(0xFF20C997), size: 20),
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+          leading: const Icon(Icons.add_circle_outline, color: AppColors.accent, size: 20),
           title: const Text(
             'Add new key…',
-            style: TextStyle(color: Color(0xFF20C997), fontSize: 14),
+            style: TextStyle(color: AppColors.accent, fontSize: 14),
           ),
           onTap: onAddNew,
         ),
@@ -524,13 +580,24 @@ class _AddKeySheetState extends State<_AddKeySheet> {
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
-      if (result != null && result.files.single.path != null) {
-        final content = await File(result.files.single.path!).readAsString();
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
+      if (result != null) {
+        final file = result.files.single;
+        final String content;
+        if (file.bytes != null) {
+          content = utf8.decode(file.bytes!);
+        } else if (file.path != null) {
+          content = await File(file.path!).readAsString();
+        } else {
+          setState(() => _error = 'Could not read file');
+          return;
+        }
         setState(() => _pemCtrl.text = content.trim());
-        // Pre-fill label with filename (no extension)
         if (_labelCtrl.text.isEmpty) {
-          final filename = result.files.single.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+          final filename = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
           _labelCtrl.text = filename;
         }
       }
@@ -562,73 +629,91 @@ class _AddKeySheetState extends State<_AddKeySheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Add SSH Key',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
+    return SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: AppSpacing.xl,
+              right: AppSpacing.xl,
+              top: AppSpacing.xl,
+              bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.xl,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Add SSH Key', style: AppTypography.title),
+                const SizedBox(height: AppSpacing.lg),
+                TextField(
+                  controller: _labelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Key label',
+                    hintText: 'e.g. Personal MacBook',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _pemCtrl,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Private key (PEM)',
+                    hintText: '-----BEGIN OPENSSH PRIVATE KEY-----',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                TextButton.icon(
+                  onPressed: _pickFile,
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('Load from file'),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: AppColors.danger, fontSize: 13),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
+                          )
+                        : const Text(
+                            'Save Key',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _labelCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'Key label',
-              hintText: 'e.g. Personal MacBook',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _pemCtrl,
-            style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Private key (PEM)',
-              hintText: '-----BEGIN OPENSSH PRIVATE KEY-----',
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: _pickFile,
-            icon: const Icon(Icons.folder_open, size: 18),
-            label: const Text('Load from file'),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
-          ],
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF20C997),
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: _saving
-                  ? const SizedBox(
-                      width: 20, height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                    )
-                  : const Text('Save Key', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

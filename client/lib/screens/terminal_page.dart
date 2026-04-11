@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 import '../models/ssh_host.dart';
 import '../services/auth_service.dart';
 import '../theme/terminal_themes.dart';
+import '../utils/platform_utils.dart';
 
 class TerminalPage extends StatefulWidget {
   final SSHHost host;
@@ -48,20 +49,10 @@ class _TerminalPageState extends State<TerminalPage>
 
     _terminal = Terminal(
       maxLines: 20000,
-      platform: Platform.isAndroid
-          ? TerminalTargetPlatform.android
-          : Platform.isIOS
-              ? TerminalTargetPlatform.ios
-              : Platform.isMacOS
-                  ? TerminalTargetPlatform.macos
-                  : Platform.isWindows
-                      ? TerminalTargetPlatform.windows
-                      : TerminalTargetPlatform.linux,
+      platform: PlatformUtils.terminalPlatform,
       onOutput: (data) => _sendInput(data),
       onResize: (w, h, pw, ph) {
-        if (!_isLocal) {
-          _session?.resizeTerminal(w, h);
-        }
+        if (!_isLocal) _session?.resizeTerminal(w, h);
       },
     );
 
@@ -72,6 +63,10 @@ class _TerminalPageState extends State<TerminalPage>
   Future<void> _connect() async {
     try {
       if (_isLocal) {
+        if (!PlatformUtils.supportsLocalShell) {
+          _terminal.write('Local shell is not supported on this platform.\r\n');
+          return;
+        }
         _terminal.write('Starting local shell…\r\n');
         await _startLocalShell();
       } else {
@@ -96,12 +91,10 @@ class _TerminalPageState extends State<TerminalPage>
     if ((h.privateKey ?? '').isNotEmpty) {
       keyPairs = SSHKeyPair.fromPem(
         h.privateKey!,
-        // Use password as key passphrase only if the key is passphrase-protected
         (h.password?.isNotEmpty ?? false) ? h.password : null,
       );
     }
 
-    // Guard: if no key and no password, fail early with a clear message
     final hasPassword = h.password != null && h.password!.isNotEmpty;
     if (keyPairs == null && !hasPassword) {
       throw Exception(
@@ -114,8 +107,6 @@ class _TerminalPageState extends State<TerminalPage>
       socket,
       username: h.username,
       identities: keyPairs,
-      // Return null (not empty string) when no password — prevents dartssh2
-      // from attempting password auth with an empty string and failing.
       onPasswordRequest: hasPassword ? () => h.password! : null,
     );
 
@@ -138,9 +129,7 @@ class _TerminalPageState extends State<TerminalPage>
 
   Future<void> _startLocalShell() async {
     final shell = _detectLocalShell();
-    final env = Map<String, String>.from(Platform.environment);
-    env['TERM'] = env['TERM'] ?? 'xterm-256color';
-    final process = await _spawnLocalProcess(shell, env);
+    final process = await _spawnLocalProcess(shell);
 
     _localProcess = process;
     _stdoutSub = process.stdout.listen((data) {
@@ -157,8 +146,11 @@ class _TerminalPageState extends State<TerminalPage>
     }));
   }
 
-  Future<Process> _spawnLocalProcess(_ShellCommand shell, Map<String, String> env) {
-    if (Platform.isWindows) {
+  Future<Process> _spawnLocalProcess(_ShellCommand shell) {
+    final env = Map<String, String>.from(Platform.environment)
+      ..['TERM'] = Platform.environment['TERM'] ?? 'xterm-256color';
+
+    if (PlatformUtils.isWindows) {
       return Process.start(
         shell.executable,
         shell.args,
@@ -174,26 +166,19 @@ class _TerminalPageState extends State<TerminalPage>
     ).catchError((_) {
       final args = List<String>.from(shell.args);
       if (!args.contains('-i')) args.add('-i');
-      return Process.start(
-        shell.executable,
-        args,
-        environment: env,
-      );
+      return Process.start(shell.executable, args, environment: env);
     });
   }
 
   _ShellCommand _detectLocalShell() {
-    if (Platform.isWindows) {
-      return _ShellCommand(executable: 'cmd.exe', args: []);
+    if (PlatformUtils.isWindows) {
+      return const _ShellCommand(executable: 'cmd.exe', args: []);
     }
     final envShell = Platform.environment['SHELL'];
     if (envShell != null && envShell.isNotEmpty) {
-      return _ShellCommand(executable: envShell, args: ['-l']);
+      return _ShellCommand(executable: envShell, args: const ['-l']);
     }
-    if (Platform.isMacOS || Platform.isLinux) {
-      return _ShellCommand(executable: '/bin/bash', args: ['-l']);
-    }
-    return _ShellCommand(executable: '/bin/sh', args: ['-l']);
+    return const _ShellCommand(executable: '/bin/bash', args: ['-l']);
   }
 
   void _sendInput(String data) {
@@ -244,46 +229,50 @@ class _TerminalPageState extends State<TerminalPage>
     }
   }
 
+  Future<void> _showContextMenu(Offset globalPosition) async {
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(globalPosition.dx, globalPosition.dy, 0, 0),
+      items: const [
+        PopupMenuItem(value: 'paste', child: Text('Paste')),
+        PopupMenuItem(value: 'clear', child: Text('Clear')),
+      ],
+    );
+    switch (choice) {
+      case 'paste':
+        _pasteFromClipboard();
+      case 'clear':
+        _terminal.eraseDisplay();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // for keep alive
 
+    final terminalView = TerminalView(
+      _terminal,
+      controller: _controller,
+      autofocus: true,
+      autoResize: true,
+      theme: widget.appearance.theme,
+      textStyle: widget.appearance.style,
+      cursorType: TerminalCursorType.block,
+      hardwareKeyboardOnly: PlatformUtils.hasPhysicalKeyboard,
+      onSecondaryTapDown: (details, offset) =>
+          _showContextMenu(details.globalPosition),
+    );
+
     return Stack(
       children: [
         Positioned.fill(
-          child: TerminalView(
-            _terminal,
-            controller: _controller,
-            autofocus: true,
-            autoResize: true,
-            theme: widget.appearance.theme,
-            textStyle: widget.appearance.style,
-            cursorType: TerminalCursorType.block,
-            hardwareKeyboardOnly: Platform.isMacOS,
-            onSecondaryTapDown: (details, offset) async {
-              final choice = await showMenu<String>(
-                context: context,
-                position: RelativeRect.fromLTRB(
-                  details.globalPosition.dx,
-                  details.globalPosition.dy,
-                  0,
-                  0,
-                ),
-                items: const [
-                  PopupMenuItem(value: 'paste', child: Text('Paste')),
-                  PopupMenuItem(value: 'clear', child: Text('Clear')),
-                ],
-              );
-              switch (choice) {
-                case 'paste':
-                  _pasteFromClipboard();
-                  break;
-                case 'clear':
-                  _terminal.eraseDisplay();
-                  break;
-              }
-            },
-          ),
+          child: PlatformUtils.isMobile
+              ? GestureDetector(
+                  onLongPressStart: (details) =>
+                      _showContextMenu(details.globalPosition),
+                  child: terminalView,
+                )
+              : terminalView,
         ),
       ],
     );
@@ -294,8 +283,5 @@ class _ShellCommand {
   final String executable;
   final List<String> args;
 
-  const _ShellCommand({
-    required this.executable,
-    required this.args,
-  });
+  const _ShellCommand({required this.executable, required this.args});
 }
