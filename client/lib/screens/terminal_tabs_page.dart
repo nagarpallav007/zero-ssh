@@ -206,7 +206,7 @@ class _TopBar extends StatelessWidget {
     final compact = layout == LayoutClass.compact;
 
     return Container(
-      height: 48,
+      height: 38,
       decoration: const BoxDecoration(
         color: AppColors.surface1,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -267,9 +267,9 @@ class _VDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 1,
-      height: 24,
+      height: 18,
       color: AppColors.border,
-      margin: const EdgeInsets.symmetric(horizontal: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 }
@@ -291,8 +291,8 @@ class _IconBtn extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(6),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2, vertical: 14),
-          child: Icon(icon, size: 17, color: AppColors.textTertiary),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm + 2, vertical: 10),
+          child: Icon(icon, size: 16, color: AppColors.textTertiary),
         ),
       ),
     );
@@ -316,9 +316,9 @@ class _AddTabBtn extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: compact ? AppSpacing.sm : AppSpacing.md,
-            vertical: 14,
+            vertical: 10,
           ),
-          child: const Icon(Icons.add_rounded, size: 17, color: AppColors.textTertiary),
+          child: const Icon(Icons.add_rounded, size: 16, color: AppColors.textTertiary),
         ),
       ),
     );
@@ -352,10 +352,10 @@ class _TabChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 3, vertical: 6),
+        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 4, vertical: 4),
         padding: EdgeInsets.symmetric(
-          horizontal: compact ? AppSpacing.sm : AppSpacing.md,
-          vertical: 0,
+          horizontal: compact ? AppSpacing.md : 14,
+          vertical: 5,
         ),
         decoration: BoxDecoration(
           color: active ? AppColors.surface3 : Colors.transparent,
@@ -366,32 +366,32 @@ class _TabChip extends StatelessWidget {
           children: [
             Icon(
               isHosts ? Icons.dns_rounded : Icons.terminal_rounded,
-              size: 13,
+              size: 14,
               color: fg,
             ),
             if (!compact || active) ...[
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 140),
+                constraints: const BoxConstraints(maxWidth: 160),
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: fg,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
               ),
             ],
             if (onClose != null) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               GestureDetector(
                 onTap: onClose,
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.all(2),
-                  child: Icon(Icons.close_rounded, size: 12, color: fg.withValues(alpha: 0.6)),
+                  child: Icon(Icons.close_rounded, size: 13, color: fg.withValues(alpha: 0.6)),
                 ),
               ),
             ],
