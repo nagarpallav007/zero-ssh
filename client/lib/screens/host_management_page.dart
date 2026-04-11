@@ -119,15 +119,41 @@ class _HostManagementPageState extends State<HostManagementPage> {
   Future<void> _openForm({SSHHost? existing}) async {
     if (existing?.isLocal == true) return;
 
-    final result = await Navigator.of(context).push<SSHHost>(
-      MaterialPageRoute(
-        builder: (_) => HostFormPage(
-          existing: existing,
-          savedKeys: _keys,
-          keyRepository: widget.loggedIn ? widget.keyRepository : null,
+    final isDesktop = AppBreakpoints.of(context) != LayoutClass.compact;
+    SSHHost? result;
+
+    if (isDesktop) {
+      result = await showDialog<SSHHost>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Dialog(
+          backgroundColor: AppColors.surface1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 600),
+            child: HostFormPage(
+              existing: existing,
+              savedKeys: _keys,
+              keyRepository: widget.loggedIn ? widget.keyRepository : null,
+              asDialog: true,
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      result = await Navigator.of(context).push<SSHHost>(
+        MaterialPageRoute(
+          builder: (_) => HostFormPage(
+            existing: existing,
+            savedKeys: _keys,
+            keyRepository: widget.loggedIn ? widget.keyRepository : null,
+          ),
+        ),
+      );
+    }
+
     if (result == null || !mounted) return;
     _persist(result, existing: existing);
   }
