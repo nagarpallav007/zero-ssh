@@ -379,7 +379,7 @@ class _Field extends StatelessWidget {
         hintStyle: const TextStyle(color: AppColors.textTertiary),
         border: InputBorder.none,
         filled: false,
-        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         errorStyle: const TextStyle(fontSize: 11),
       ),
     );

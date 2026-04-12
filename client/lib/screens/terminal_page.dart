@@ -259,6 +259,7 @@ class _TerminalPageState extends State<TerminalPage>
       textStyle: widget.appearance.style,
       cursorType: TerminalCursorType.block,
       hardwareKeyboardOnly: PlatformUtils.hasPhysicalKeyboard,
+      padding: const EdgeInsets.all(8),
       onSecondaryTapDown: (details, offset) =>
           _showContextMenu(details.globalPosition),
     );
