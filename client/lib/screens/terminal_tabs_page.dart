@@ -358,10 +358,10 @@ class _TabChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 4, vertical: 4),
+        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 4, vertical: 2),
         padding: EdgeInsets.symmetric(
           horizontal: compact ? AppSpacing.md : 14,
-          vertical: 5,
+          vertical: 3,
         ),
         decoration: BoxDecoration(
           color: active ? AppColors.surface3 : Colors.transparent,
@@ -372,7 +372,7 @@ class _TabChip extends StatelessWidget {
           children: [
             Icon(
               isHosts ? Icons.dns_rounded : Icons.terminal_rounded,
-              size: 14,
+              size: 13,
               color: fg,
             ),
             if (!compact || active) ...[
