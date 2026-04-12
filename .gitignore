@@ -24,5 +24,8 @@ client/pubspec.lock
 .vscode/
 *.iml
 
+# Claude context (local only)
+CLAUDE.md
+
 # Misc
 *.log
