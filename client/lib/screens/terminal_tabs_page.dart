@@ -205,8 +205,14 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = layout == LayoutClass.compact;
 
+    // On macOS: match the native titlebar height so traffic lights are
+    // exactly vertically centred. On other platforms use a fixed 38px.
+    final barHeight = PlatformUtils.isMacOS
+        ? PlatformUtils.nativeTitlebarHeight
+        : 38.0;
+
     return Container(
-      height: 38,
+      height: barHeight,
       decoration: const BoxDecoration(
         color: AppColors.surface1,
         border: Border(bottom: BorderSide(color: AppColors.border)),

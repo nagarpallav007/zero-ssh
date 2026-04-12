@@ -39,30 +39,43 @@ abstract final class PlatformUtils {
 
   static const _channel = MethodChannel('com.zerossh/window_chrome');
 
-  /// Cached value so we only call the platform channel once.
+  /// Cached values — set once at startup, never change.
   static double? _cachedInset;
+  static double? _cachedTitlebarHeight;
 
-  /// Initialise the traffic-light inset value at app start.
-  /// Call once from `main()` before `runApp()` on macOS.
+  /// Read actual traffic-light inset and titlebar height from the OS.
+  /// Call once from `main()` on macOS before `runApp()`.
   static Future<void> initWindowChrome() async {
     if (!Platform.isMacOS) return;
     try {
-      final raw = await _channel.invokeMethod<double>('trafficLightInset');
-      _cachedInset = raw ?? 72.0;
+      final results = await Future.wait([
+        _channel.invokeMethod<double>('trafficLightInset'),
+        _channel.invokeMethod<double>('titlebarHeight'),
+      ]);
+      _cachedInset = results[0] ?? 72.0;
+      _cachedTitlebarHeight = results[1] ?? 28.0;
     } catch (_) {
-      _cachedInset = 72.0; // safe fallback while window is not yet ready
+      _cachedInset = 72.0;
+      _cachedTitlebarHeight = 28.0;
     }
   }
 
-  /// Horizontal left inset needed to clear the macOS traffic-light buttons.
-  /// Returns the value read from the OS (via [initWindowChrome]).
-  /// Returns 0 on all non-macOS platforms.
+  /// Horizontal left inset to clear the macOS traffic-light buttons.
+  /// Returns 0 on non-macOS.
   static double get trafficLightInset {
     if (!Platform.isMacOS) return 0;
     return _cachedInset ?? 72.0;
   }
 
-  /// Returns [trafficLightInset] as a convenience for use inline in widgets.
+  /// Height of the native macOS titlebar — use this for the Flutter top bar
+  /// so the traffic lights land exactly at vertical center.
+  /// Returns 0 on non-macOS (no inset needed elsewhere).
+  static double get nativeTitlebarHeight {
+    if (!Platform.isMacOS) return 0;
+    return _cachedTitlebarHeight ?? 28.0;
+  }
+
+  /// Convenience for widgets.
   static double titleBarInset(BuildContext context) => trafficLightInset;
 
   /// Maps the current platform to the xterm TerminalTargetPlatform enum.
