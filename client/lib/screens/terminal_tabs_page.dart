@@ -205,11 +205,10 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = layout == LayoutClass.compact;
 
-    // On macOS: match the native titlebar height so traffic lights are
-    // exactly vertically centred. On other platforms use a fixed 38px.
-    final barHeight = PlatformUtils.isMacOS
-        ? PlatformUtils.nativeTitlebarHeight
-        : 38.0;
+    // 38px matches the .unifiedCompact toolbar zone on macOS (titlebar +
+    // toolbar merged), which vertically centres the traffic-light buttons.
+    // Same value is used on all other platforms — no per-platform branching.
+    const barHeight = 38.0;
 
     return Container(
       height: barHeight,
@@ -358,10 +357,10 @@ class _TabChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 4, vertical: 2),
+        margin: EdgeInsets.symmetric(horizontal: compact ? 2 : 4, vertical: 4),
         padding: EdgeInsets.symmetric(
           horizontal: compact ? AppSpacing.md : 14,
-          vertical: 3,
+          vertical: 5,
         ),
         decoration: BoxDecoration(
           color: active ? AppColors.surface3 : Colors.transparent,
@@ -372,7 +371,7 @@ class _TabChip extends StatelessWidget {
           children: [
             Icon(
               isHosts ? Icons.dns_rounded : Icons.terminal_rounded,
-              size: 13,
+              size: 14,
               color: fg,
             ),
             if (!compact || active) ...[

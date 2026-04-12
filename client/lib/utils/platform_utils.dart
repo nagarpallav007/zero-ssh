@@ -39,24 +39,18 @@ abstract final class PlatformUtils {
 
   static const _channel = MethodChannel('com.zerossh/window_chrome');
 
-  /// Cached values — set once at startup, never change.
+  /// Cached value — set once at startup, never changes.
   static double? _cachedInset;
-  static double? _cachedTitlebarHeight;
 
-  /// Read actual traffic-light inset and titlebar height from the OS.
+  /// Read the actual right edge of the macOS traffic-light buttons from the OS.
   /// Call once from `main()` on macOS before `runApp()`.
   static Future<void> initWindowChrome() async {
     if (!Platform.isMacOS) return;
     try {
-      final results = await Future.wait([
-        _channel.invokeMethod<double>('trafficLightInset'),
-        _channel.invokeMethod<double>('titlebarHeight'),
-      ]);
-      _cachedInset = results[0] ?? 72.0;
-      _cachedTitlebarHeight = results[1] ?? 28.0;
+      _cachedInset =
+          await _channel.invokeMethod<double>('trafficLightInset') ?? 72.0;
     } catch (_) {
       _cachedInset = 72.0;
-      _cachedTitlebarHeight = 28.0;
     }
   }
 
@@ -65,14 +59,6 @@ abstract final class PlatformUtils {
   static double get trafficLightInset {
     if (!Platform.isMacOS) return 0;
     return _cachedInset ?? 72.0;
-  }
-
-  /// Height of the native macOS titlebar — use this for the Flutter top bar
-  /// so the traffic lights land exactly at vertical center.
-  /// Returns 0 on non-macOS (no inset needed elsewhere).
-  static double get nativeTitlebarHeight {
-    if (!Platform.isMacOS) return 0;
-    return _cachedTitlebarHeight ?? 28.0;
   }
 
   /// Convenience for widgets.
