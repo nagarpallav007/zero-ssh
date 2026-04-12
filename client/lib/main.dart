@@ -12,8 +12,13 @@ import 'services/key_repository.dart';
 import 'services/passphrase_manager.dart';
 import 'theme/app_theme.dart';
 import 'theme/terminal_themes.dart';
+import 'utils/platform_utils.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Read the actual right-edge of the macOS traffic-light buttons once,
+  // so no pixel value is hardcoded anywhere in the Dart layer.
+  await PlatformUtils.initWindowChrome();
   runApp(const ProviderScope(child: ZeroSSHApp()));
 }
 

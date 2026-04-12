@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:xterm/xterm.dart';
 
@@ -10,6 +11,8 @@ abstract final class PlatformUtils {
   static final bool isMobile = Platform.isIOS || Platform.isAndroid;
 
   static final bool isWindows = Platform.isWindows;
+
+  static final bool isMacOS = Platform.isMacOS;
 
   /// Desktop platforms always have a physical keyboard.
   /// Fixes the old bug where only macOS got `hardwareKeyboardOnly: true`.
@@ -32,13 +35,34 @@ abstract final class PlatformUtils {
     return Platform.localHostname;
   }
 
-  /// Left inset to clear the macOS traffic-light buttons.
-  /// Returns 0 on all other platforms (including mobile).
-  static double titleBarInset(BuildContext context) {
-    if (!Platform.isMacOS) return 0;
-    // macOS traffic lights occupy ~68px; 72 gives clean clearance
-    return 72;
+  // ── macOS traffic-light clearance ────────────────────────────────────────
+
+  static const _channel = MethodChannel('com.zerossh/window_chrome');
+
+  /// Cached value — set once at startup, never changes.
+  static double? _cachedInset;
+
+  /// Read the actual right edge of the macOS traffic-light buttons from the OS.
+  /// Call once from `main()` on macOS before `runApp()`.
+  static Future<void> initWindowChrome() async {
+    if (!Platform.isMacOS) return;
+    try {
+      _cachedInset =
+          await _channel.invokeMethod<double>('trafficLightInset') ?? 72.0;
+    } catch (_) {
+      _cachedInset = 72.0;
+    }
   }
+
+  /// Horizontal left inset to clear the macOS traffic-light buttons.
+  /// Returns 0 on non-macOS.
+  static double get trafficLightInset {
+    if (!Platform.isMacOS) return 0;
+    return _cachedInset ?? 72.0;
+  }
+
+  /// Convenience for widgets.
+  static double titleBarInset(BuildContext context) => trafficLightInset;
 
   /// Maps the current platform to the xterm TerminalTargetPlatform enum.
   static TerminalTargetPlatform get terminalPlatform {

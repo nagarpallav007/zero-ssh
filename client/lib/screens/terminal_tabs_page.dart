@@ -205,8 +205,13 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = layout == LayoutClass.compact;
 
+    // 38px matches the .unifiedCompact toolbar zone on macOS (titlebar +
+    // toolbar merged), which vertically centres the traffic-light buttons.
+    // Same value is used on all other platforms — no per-platform branching.
+    const barHeight = 38.0;
+
     return Container(
-      height: 38,
+      height: barHeight,
       decoration: const BoxDecoration(
         color: AppColors.surface1,
         border: Border(bottom: BorderSide(color: AppColors.border)),
