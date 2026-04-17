@@ -81,7 +81,10 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
 
   Future<void> _onLogout() async {
     PassphraseManager.instance.clear();
-    await _authService.logout();
+    await Future.wait([
+      _authService.logout(),
+      _hostRepository.clearCache(),
+    ]);
     setState(() {
       _session = null;
       _guestMode = false;

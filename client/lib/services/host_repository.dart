@@ -97,6 +97,9 @@ class HostRepository {
     return updated;
   }
 
+  /// Wipes the local host cache. Call on logout so guest mode starts empty.
+  Future<void> clearCache() => _storage.clearHosts();
+
   Future<void> deleteHost(String id) async {
     final session = await authService.currentSession();
     if (session == null) {

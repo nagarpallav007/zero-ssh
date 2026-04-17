@@ -206,7 +206,18 @@ class _HostManagementPageState extends State<HostManagementPage> {
       } else {
         nonLocal.add(saved);
       }
-      setState(() => _hosts = _withLocalHost(nonLocal));
+
+      // Reload keys so any key added inside the form is immediately resolvable
+      // (avoids "SSH key not found" on the first connect after adding a host+key).
+      final updatedKeys = widget.loggedIn
+          ? await widget.keyRepository.loadKeys()
+          : <SSHKey>[];
+
+      if (!mounted) return;
+      setState(() {
+        _hosts = _withLocalHost(nonLocal);
+        _keys = updatedKeys;
+      });
     } catch (e) {
       _showError('Could not save host: $e');
     } finally {
