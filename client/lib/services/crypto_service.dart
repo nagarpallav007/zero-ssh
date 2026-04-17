@@ -3,7 +3,6 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:flutter/foundation.dart' show compute;
 
 import 'passphrase_manager.dart';
 
@@ -32,18 +31,26 @@ class CryptoService {
   ///
   /// The result is cached in [PassphraseManager] for the duration of the
   /// session — subsequent calls for the same salt are instant (no Argon2id).
-  /// The derivation itself runs on a background isolate so the UI stays
-  /// responsive during the initial host load.
+  /// This eliminates CPU spikes on reload; only the first load per session
+  /// runs the derivation.
   static Future<SecretKey> deriveKey(String passphrase, String salt) async {
     // Cache hit: return immediately, no Argon2id.
     final cached = PassphraseManager.instance.cachedKeyBytes(salt);
     if (cached != null) return SecretKey(cached);
 
-    // Cache miss: derive on a background isolate (Argon2id is pure Dart,
-    // safe for compute()) then cache the result.
-    final saltBytes = List<int>.from(base64.decode(salt));
-    final keyBytes = await compute(_deriveKeyIsolate, [passphrase, saltBytes]);
-
+    // Cache miss: derive key, then cache for subsequent calls.
+    final saltBytes = base64.decode(salt);
+    final algorithm = Argon2id(
+      parallelism: 4,
+      memory: 65536, // 64 MB
+      iterations: 3,
+      hashLength: 32,
+    );
+    final key = await algorithm.deriveKey(
+      secretKey: SecretKey(utf8.encode(passphrase)),
+      nonce: saltBytes,
+    );
+    final keyBytes = await key.extractBytes();
     PassphraseManager.instance.cacheKeyBytes(salt, keyBytes);
     return SecretKey(keyBytes);
   }
@@ -98,22 +105,3 @@ class CryptoService {
   }
 }
 
-// ── Background isolate helper ──────────────────────────────────────────────────
-
-/// Top-level function required by [compute] — must not be a closure.
-/// Runs Argon2id key derivation on a background isolate and returns raw key bytes.
-Future<List<int>> _deriveKeyIsolate(List<dynamic> args) async {
-  final passphrase = args[0] as String;
-  final saltBytes = args[1] as List<int>;
-  final algorithm = Argon2id(
-    parallelism: 4,
-    memory: 65536, // 64 MB
-    iterations: 3,
-    hashLength: 32,
-  );
-  final key = await algorithm.deriveKey(
-    secretKey: SecretKey(utf8.encode(passphrase)),
-    nonce: saltBytes,
-  );
-  return key.extractBytes();
-}
