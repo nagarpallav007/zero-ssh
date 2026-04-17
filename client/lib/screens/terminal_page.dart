@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform, Process;
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dartssh2/dartssh2.dart';
@@ -89,9 +90,11 @@ class _TerminalPageState extends State<TerminalPage>
 
     List<SSHKeyPair>? keyPairs;
     if ((h.privateKey ?? '').isNotEmpty) {
-      keyPairs = SSHKeyPair.fromPem(
-        h.privateKey!,
-        (h.password?.isNotEmpty ?? false) ? h.password : null,
+      // fromPem does RSA/ECDSA parsing — run on a background isolate so the
+      // UI thread stays responsive while the tab is opening.
+      keyPairs = await compute(
+        _parsePem,
+        [h.privateKey!, if (h.password?.isNotEmpty ?? false) h.password!],
       );
     }
 
@@ -286,3 +289,10 @@ class _ShellCommand {
 
   const _ShellCommand({required this.executable, required this.args});
 }
+
+// ── Background isolate helpers ─────────────────────────────────────────────────
+
+/// Top-level function for [compute] — parses a PEM private key off the main thread.
+/// [args] = [pemString, optionalPassphrase?]
+List<SSHKeyPair> _parsePem(List<String> args) =>
+    SSHKeyPair.fromPem(args[0], args.length > 1 ? args[1] : null);
