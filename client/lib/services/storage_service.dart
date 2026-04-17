@@ -18,4 +18,9 @@ class StorageService {
     final data = jsonEncode(hosts.map((e) => e.toJson()).toList());
     await prefs.setString(_key, data);
   }
+
+  Future<void> clearHosts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key);
+  }
 }

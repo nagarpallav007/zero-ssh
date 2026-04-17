@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform, Process;
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dartssh2/dartssh2.dart';
@@ -40,6 +41,9 @@ class _TerminalPageState extends State<TerminalPage>
   Process? _localProcess;
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
+
+  double _fontSize = defaultTerminalFontSize;
+  double? _scaleBaseFontSize;
 
   bool get _isLocal => widget.host.isLocal;
 
@@ -89,9 +93,11 @@ class _TerminalPageState extends State<TerminalPage>
 
     List<SSHKeyPair>? keyPairs;
     if ((h.privateKey ?? '').isNotEmpty) {
-      keyPairs = SSHKeyPair.fromPem(
-        h.privateKey!,
-        (h.password?.isNotEmpty ?? false) ? h.password : null,
+      // fromPem does RSA/ECDSA parsing — run on a background isolate so the
+      // UI thread stays responsive while the tab is opening.
+      keyPairs = await compute(
+        _parsePem,
+        [h.privateKey!, if (h.password?.isNotEmpty ?? false) h.password!],
       );
     }
 
@@ -256,7 +262,7 @@ class _TerminalPageState extends State<TerminalPage>
       autofocus: true,
       autoResize: true,
       theme: widget.appearance.theme,
-      textStyle: widget.appearance.style,
+      textStyle: terminalStyleAtSize(_fontSize),
       cursorType: TerminalCursorType.block,
       hardwareKeyboardOnly: PlatformUtils.hasPhysicalKeyboard,
       padding: const EdgeInsets.all(8),
@@ -271,6 +277,20 @@ class _TerminalPageState extends State<TerminalPage>
               ? GestureDetector(
                   onLongPressStart: (details) =>
                       _showContextMenu(details.globalPosition),
+                  onScaleStart: (details) {
+                    if (details.pointerCount == 2) {
+                      _scaleBaseFontSize = _fontSize;
+                    }
+                  },
+                  onScaleUpdate: (details) {
+                    if (details.pointerCount == 2 && _scaleBaseFontSize != null) {
+                      final next = (_scaleBaseFontSize! * details.scale).clamp(8.0, 24.0);
+                      if ((next - _fontSize).abs() >= 0.5) {
+                        setState(() => _fontSize = next);
+                      }
+                    }
+                  },
+                  onScaleEnd: (_) => _scaleBaseFontSize = null,
                   child: terminalView,
                 )
               : terminalView,
@@ -286,3 +306,10 @@ class _ShellCommand {
 
   const _ShellCommand({required this.executable, required this.args});
 }
+
+// ── Background isolate helpers ─────────────────────────────────────────────────
+
+/// Top-level function for [compute] — parses a PEM private key off the main thread.
+/// [args] = [pemString, optionalPassphrase?]
+List<SSHKeyPair> _parsePem(List<String> args) =>
+    SSHKeyPair.fromPem(args[0], args.length > 1 ? args[1] : null);

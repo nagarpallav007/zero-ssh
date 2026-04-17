@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -12,6 +13,9 @@ const router = Router();
 
 const signToken = (id: string, email: string, emailVerified: boolean, provider: string) =>
   jwt.sign({ email, emailVerified, provider }, config.jwtSecret, { subject: id, expiresIn: '1h' });
+
+/** Cryptographically random 32-byte salt encoded as base64 (unique per user, never changes). */
+const generateUserSalt = () => crypto.randomBytes(32).toString('base64');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -34,11 +38,13 @@ router.post('/signup', async (req, res) => {
       data: {
         email: email.toLowerCase(),
         passwordHash,
+        salt: generateUserSalt(),
         provider: 'password',
       },
       select: {
         id: true,
         email: true,
+        salt: true,
         emailVerified: true,
         emailVerifiedAt: true,
         provider: true,
@@ -49,6 +55,7 @@ router.post('/signup', async (req, res) => {
     const token = signToken(user.id, user.email, user.emailVerified, user.provider);
     return res.status(201).json({
       token,
+      userSalt: user.salt,
       user: {
         id: user.id,
         email: user.email,
@@ -81,6 +88,7 @@ router.post('/login', async (req, res) => {
         id: true,
         email: true,
         passwordHash: true,
+        salt: true,
         emailVerified: true,
         emailVerifiedAt: true,
         provider: true,
@@ -108,6 +116,7 @@ router.post('/login', async (req, res) => {
     const token = signToken(user.id, user.email, user.emailVerified, user.provider);
     return res.json({
       token,
+      userSalt: user.salt,
       user: {
         id: user.id,
         email: user.email,

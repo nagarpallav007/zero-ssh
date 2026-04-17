@@ -37,6 +37,9 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
   late final KeyRepository _keyRepository =
       KeyRepository(apiClient: _apiClient, authService: _authService);
 
+  // Computed once — ThemeData is immutable, no need to rebuild it on every setState.
+  final _appTheme = buildAppTheme();
+
   // Default appearance for new tabs (persisted in SharedPreferences)
   late TerminalAppearance _defaultAppearance = terminalAppearances.first;
 
@@ -78,7 +81,10 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
 
   Future<void> _onLogout() async {
     PassphraseManager.instance.clear();
-    await _authService.logout();
+    await Future.wait([
+      _authService.logout(),
+      _hostRepository.clearCache(),
+    ]);
     setState(() {
       _session = null;
       _guestMode = false;
@@ -102,7 +108,7 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     return MaterialApp(
       title: 'ZeroSSH',
       debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
+      theme: _appTheme,
       home: _buildHome(),
     );
   }
@@ -128,6 +134,7 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     if (!_passphraseReady) {
       return PassphrasePage(
         isNewUser: _isFirstLogin,
+        userSalt: _session!.userSalt,
         onPassphraseSet: _onPassphraseSet,
       );
     }

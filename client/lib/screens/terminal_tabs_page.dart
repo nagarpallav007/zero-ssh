@@ -374,10 +374,10 @@ class _TabChip extends StatelessWidget {
               size: 14,
               color: fg,
             ),
-            if (!compact || active) ...[
+            ...[
               const SizedBox(width: 6),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
+                constraints: BoxConstraints(maxWidth: compact ? 120 : 160),
                 child: Text(
                   label,
                   overflow: TextOverflow.ellipsis,

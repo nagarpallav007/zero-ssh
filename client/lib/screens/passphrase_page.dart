@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/crypto_service.dart';
 import '../services/passphrase_manager.dart';
 import '../theme/app_theme.dart';
 
@@ -6,13 +7,18 @@ import '../theme/app_theme.dart';
 ///
 /// [isNewUser] = true  → "Create passphrase" mode (confirm field + strength bar).
 /// [isNewUser] = false → "Enter passphrase" mode (single field).
+///
+/// On submit, runs Argon2id(passphrase, userSalt) once to produce the master key
+/// stored in [PassphraseManager]. All subsequent session operations use pure AES.
 class PassphrasePage extends StatefulWidget {
   final bool isNewUser;
+  final String userSalt; // from AuthSession, used for Argon2id derivation
   final VoidCallback onPassphraseSet;
 
   const PassphrasePage({
     super.key,
     required this.isNewUser,
+    required this.userSalt,
     required this.onPassphraseSet,
   });
 
@@ -24,6 +30,7 @@ class _PassphrasePageState extends State<PassphrasePage> {
   final _passphraseCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   bool _obscure = true;
+  bool _deriving = false;
   String? _error;
 
   @override
@@ -57,7 +64,7 @@ class _PassphrasePageState extends State<PassphrasePage> {
     return 'Strong';
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final p = _passphraseCtrl.text;
     if (p.length < 8) {
       setState(() => _error = 'Passphrase must be at least 8 characters');
@@ -67,8 +74,24 @@ class _PassphrasePageState extends State<PassphrasePage> {
       setState(() => _error = 'Passphrases do not match');
       return;
     }
-    PassphraseManager.instance.set(p);
-    widget.onPassphraseSet();
+
+    setState(() {
+      _deriving = true;
+      _error = null;
+    });
+
+    try {
+      final masterKey = await CryptoService.deriveMasterKey(p, widget.userSalt);
+      PassphraseManager.instance.setMasterKey(masterKey);
+      widget.onPassphraseSet();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to derive encryption key. Try again.';
+          _deriving = false;
+        });
+      }
+    }
   }
 
   @override
@@ -210,17 +233,26 @@ class _PassphrasePageState extends State<PassphrasePage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _submit,
+                        onPressed: _deriving ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.accent,
                           foregroundColor: Colors.black,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        child: Text(
-                          widget.isNewUser ? 'Set Passphrase' : 'Unlock',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                        child: _deriving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.black,
+                                ),
+                              )
+                            : Text(
+                                widget.isNewUser ? 'Set Passphrase' : 'Unlock',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
                       ),
                     ),
 

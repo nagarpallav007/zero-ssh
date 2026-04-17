@@ -27,5 +27,10 @@ client/pubspec.lock
 # Claude context (local only)
 CLAUDE.md
 
+# Scratch / patch files
+client/.codex/
+client/*.zip
+client/test_socket.dart
+
 # Misc
 *.log

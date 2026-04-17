@@ -16,8 +16,17 @@ class TerminalAppearance {
   });
 }
 
-TerminalStyle _defaultStyle() => TerminalStyle.fromTextStyle(
-      GoogleFonts.firaCode(fontSize: 14, height: 1.1, letterSpacing: 0),
+const double defaultTerminalFontSize = 14.0;
+
+// Computed once — all themes share the same font settings.
+final _sharedTerminalStyle = TerminalStyle.fromTextStyle(
+  GoogleFonts.firaCode(fontSize: defaultTerminalFontSize, height: 1.1, letterSpacing: 0),
+);
+
+/// Returns a [TerminalStyle] at an arbitrary font size, preserving all other
+/// font settings. Used by the pinch-to-zoom gesture in [TerminalPage].
+TerminalStyle terminalStyleAtSize(double fontSize) => TerminalStyle.fromTextStyle(
+      GoogleFonts.firaCode(fontSize: fontSize, height: 1.1, letterSpacing: 0),
     );
 
 final terminalAppearances = <TerminalAppearance>[
@@ -25,7 +34,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'tealDark',
     name: 'Teal Dark',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFF1D1F28),
       foreground: const Color(0xFF00D1B2),
@@ -57,7 +66,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'solarizedDark',
     name: 'Solarized Dark',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFF002B36),
       foreground: const Color(0xFF839496),
@@ -89,7 +98,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'dracula',
     name: 'Dracula',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFF282A36),
       foreground: const Color(0xFFF8F8F2),
@@ -121,7 +130,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'nord',
     name: 'Nord',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFF2E3440),
       foreground: const Color(0xFFD8DEE9),
@@ -153,7 +162,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'monokai',
     name: 'Monokai',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFF272822),
       foreground: const Color(0xFFF8F8F2),
@@ -185,7 +194,7 @@ final terminalAppearances = <TerminalAppearance>[
   TerminalAppearance(
     key: 'light',
     name: 'Light',
-    style: _defaultStyle(),
+    style: _sharedTerminalStyle,
     theme: TerminalTheme(
       background: const Color(0xFFFAFAFA),
       foreground: const Color(0xFF24292E),

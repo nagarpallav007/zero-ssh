@@ -1,33 +1,30 @@
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
 /// Client-side zero-knowledge encryption.
 ///
-/// Flow:
-///   1. generateSalt()                     → random 16-byte base64 salt
-///   2. deriveKey(passphrase, salt)        → 32-byte key via Argon2id
-///   3. encrypt(key, plaintext)            → base64 blob "nonce:mac:cipher"
-///   4. decrypt(key, encryptedData)        → original plaintext
+/// Flow (once per session, at passphrase entry):
+///   1. deriveMasterKey(passphrase, userSalt)  → SecretKey via Argon2id
 ///
-/// The passphrase never leaves the device. The server receives only
-/// the encrypted blob and the salt — it cannot derive the key.
+/// Flow (per item, cheap):
+///   2. encrypt(masterKey, plaintext)          → base64 blob "nonce:mac:cipher"
+///   3. decrypt(masterKey, encryptedData)      → original plaintext
+///
+/// The passphrase never leaves the device. The server receives only the
+/// encrypted blob; the user's salt is stored server-side on the User row.
 class CryptoService {
   static final _aesGcm = AesGcm.with256bits();
 
-  /// Generates a cryptographically random 16-byte salt encoded as base64.
-  static String generateSalt() {
-    final rng = Random.secure();
-    final bytes = Uint8List.fromList(List.generate(16, (_) => rng.nextInt(256)));
-    return base64.encode(bytes);
-  }
-
-  /// Derives a 32-byte AES key from [passphrase] and a base64-encoded [salt]
-  /// using Argon2id (memory=64 MB, iterations=3, parallelism=4).
-  static Future<SecretKey> deriveKey(String passphrase, String salt) async {
-    final saltBytes = base64.decode(salt);
+  /// Derives a 32-byte master key from [passphrase] and a base64-encoded
+  /// [userSalt] using Argon2id (memory=64 MB, iterations=3, parallelism=4).
+  ///
+  /// Called **once** per session at passphrase entry. The result is stored in
+  /// [PassphraseManager] — all subsequent encrypt/decrypt calls use it directly
+  /// with no further Argon2id work.
+  static Future<SecretKey> deriveMasterKey(
+      String passphrase, String userSalt) async {
+    final saltBytes = base64.decode(userSalt);
     final algorithm = Argon2id(
       parallelism: 4,
       memory: 65536, // 64 MB
@@ -42,6 +39,7 @@ class CryptoService {
 
   /// AES-256-GCM encrypts [plaintext] using [key].
   /// Returns a base64 string in the format "nonce:mac:ciphertext".
+  /// The nonce (IV) is randomly generated per call — safe to reuse the key.
   static Future<String> encrypt(SecretKey key, String plaintext) async {
     final secretBox = await _aesGcm.encrypt(
       utf8.encode(plaintext),
@@ -57,7 +55,8 @@ class CryptoService {
   static Future<String> decrypt(SecretKey key, String encryptedData) async {
     final parts = encryptedData.split(':');
     if (parts.length != 3) {
-      throw const FormatException('Invalid encrypted data format: expected nonce:mac:ciphertext');
+      throw const FormatException(
+          'Invalid encrypted data format: expected nonce:mac:ciphertext');
     }
     final nonce = base64.decode(parts[0]);
     final mac = Mac(base64.decode(parts[1]));
@@ -66,26 +65,5 @@ class CryptoService {
     final plainBytes = await _aesGcm.decrypt(secretBox, secretKey: key);
     return utf8.decode(plainBytes);
   }
-
-  /// Convenience: derive key from [passphrase] + new salt, then encrypt [plaintext].
-  /// Returns a record with the encrypted blob and the salt (both needed to decrypt).
-  static Future<({String encryptedData, String salt})> encryptWithPassphrase(
-    String passphrase,
-    String plaintext,
-  ) async {
-    final salt = generateSalt();
-    final key = await deriveKey(passphrase, salt);
-    final encryptedData = await encrypt(key, plaintext);
-    return (encryptedData: encryptedData, salt: salt);
-  }
-
-  /// Convenience: derive key from [passphrase] + stored [salt], then decrypt.
-  static Future<String> decryptWithPassphrase(
-    String passphrase,
-    String encryptedData,
-    String salt,
-  ) async {
-    final key = await deriveKey(passphrase, salt);
-    return decrypt(key, encryptedData);
-  }
 }
+
