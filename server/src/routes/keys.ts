@@ -17,7 +17,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         label: true,
         publicKey: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -35,7 +34,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten().fieldErrors });
   }
-  const { label, publicKey, encryptedData, salt } = parsed.data;
+  const { label, publicKey, encryptedData } = parsed.data;
 
   try {
     const row = await prisma.key.create({
@@ -44,14 +43,12 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         label: label ?? null,
         publicKey: publicKey ?? null,
         encryptedData,
-        salt,
       },
       select: {
         id: true,
         label: true,
         publicKey: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -78,21 +75,19 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Key not found' });
     }
 
-    const { label, publicKey, encryptedData, salt } = parsed.data;
+    const { label, publicKey, encryptedData } = parsed.data;
     const row = await prisma.key.update({
       where: { id: req.params.id },
       data: {
         label: label ?? undefined,
         publicKey: publicKey ?? undefined,
         encryptedData: encryptedData ?? undefined,
-        salt: salt ?? undefined,
       },
       select: {
         id: true,
         label: true,
         publicKey: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },

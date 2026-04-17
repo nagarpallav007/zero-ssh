@@ -1,42 +1,31 @@
-/// In-memory passphrase store.
+import 'package:cryptography/cryptography.dart';
+
+/// In-memory master key store.
 ///
-/// The passphrase is NEVER written to disk, stored in SharedPreferences,
-/// flutter_secure_storage, or transmitted over the network.
-/// It lives only in this singleton for the duration of the app session.
-/// On logout, call [clear] to wipe it from memory.
+/// The master key is derived once at login time via Argon2id(passphrase, userSalt)
+/// and held in memory for the duration of the session. It is NEVER written to
+/// disk or transmitted over the network.
 ///
-/// Derived AES keys are also cached here (keyed by salt) so that
-/// Argon2id is only run once per host per session rather than once per
-/// host per load. The cache is cleared on logout alongside the passphrase.
+/// All subsequent encrypt/decrypt calls use this key directly via AES-256-GCM —
+/// no further Argon2id calls are needed until the user logs out and back in.
+///
+/// On logout, call [clear] to wipe the key from memory.
 class PassphraseManager {
   PassphraseManager._();
 
   static final PassphraseManager instance = PassphraseManager._();
 
-  String? _passphrase;
+  SecretKey? _masterKey;
 
-  // Derived key cache: salt (base64) → raw key bytes.
-  // Avoids re-running Argon2id for the same salt on every reload.
-  final Map<String, List<int>> _keyCache = {};
+  /// Store the derived master key for this session.
+  void setMasterKey(SecretKey key) => _masterKey = key;
 
-  /// Set the passphrase for this session.
-  void set(String passphrase) => _passphrase = passphrase;
+  /// Returns the master key, or null if not yet derived.
+  SecretKey? get masterKey => _masterKey;
 
-  /// Returns the passphrase, or null if not yet set.
-  String? get() => _passphrase;
+  /// True if the master key has been derived for this session.
+  bool get isSet => _masterKey != null;
 
-  /// True if the passphrase has been entered for this session.
-  bool get isSet => _passphrase != null;
-
-  /// Returns cached derived key bytes for [salt], or null if not yet derived.
-  List<int>? cachedKeyBytes(String salt) => _keyCache[salt];
-
-  /// Stores derived key bytes for [salt].
-  void cacheKeyBytes(String salt, List<int> bytes) => _keyCache[salt] = bytes;
-
-  /// Clears the passphrase and all derived key material from memory (call on logout).
-  void clear() {
-    _passphrase = null;
-    _keyCache.clear();
-  }
+  /// Clears the master key from memory (call on logout).
+  void clear() => _masterKey = null;
 }

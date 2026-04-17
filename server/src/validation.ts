@@ -6,25 +6,22 @@ export const passwordSchema = z
   .min(8, 'Password must be at least 8 characters')
   .max(128, 'Password too long');
 
-// Keys: server stores opaque client-encrypted blobs + Argon2id salt
+// Keys: server stores opaque client-encrypted blobs (master-key scheme — no per-item salt)
 export const keyCreateSchema = z.object({
   label: z.string().trim().max(128).optional().nullable(),
   publicKey: z.string().trim().max(8192).optional().nullable(),
   encryptedData: z.string().min(1),
-  salt: z.string().min(1),
 });
 
 export const keyUpdateSchema = z.object({
   label: z.string().trim().max(128).optional(),
   publicKey: z.string().trim().max(8192).optional(),
   encryptedData: z.string().min(1).optional(),
-  salt: z.string().min(1).optional(),
 });
 
-// Hosts: all metadata is client-encrypted; server sees only blob + salt
+// Hosts: all metadata is client-encrypted; server sees only the blob
 export const hostCreateSchema = z.object({
   encryptedData: z.string().min(1),
-  salt: z.string().min(1),
 });
 
 export const hostUpdateSchema = hostCreateSchema.partial();

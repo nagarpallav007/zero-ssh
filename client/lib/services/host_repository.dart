@@ -39,7 +39,7 @@ class HostRepository {
     return _storage.loadHosts();
   }
 
-  /// Creates a host. If authenticated, encrypts and uploads to server.
+  /// Creates a host. If authenticated, encrypts with the master key and uploads.
   Future<SSHHost> createHost(SSHHost host) async {
     final session = await authService.currentSession();
     if (session == null) {
@@ -50,15 +50,14 @@ class HostRepository {
       return newHost;
     }
 
-    final passphrase = PassphraseManager.instance.get();
-    if (passphrase == null) throw Exception('Passphrase required to sync hosts');
+    final masterKey = PassphraseManager.instance.masterKey;
+    if (masterKey == null) throw Exception('Passphrase required to sync hosts');
 
-    final (:encryptedData, :salt) =
-        await CryptoService.encryptWithPassphrase(passphrase, host.toSyncJson());
+    final encryptedData = await CryptoService.encrypt(masterKey, host.toSyncJson());
 
     final res = await apiClient.postJson(
       '/hosts',
-      {'encryptedData': encryptedData, 'salt': salt},
+      {'encryptedData': encryptedData},
       token: session.token,
     );
 
@@ -66,13 +65,12 @@ class HostRepository {
     final created = host.copyWith(
       id: serverData['id'] as String,
       encryptedData: encryptedData,
-      salt: salt,
     );
     await _syncCache(created);
     return created;
   }
 
-  /// Updates a host. If authenticated, re-encrypts with a fresh salt and uploads.
+  /// Updates a host. If authenticated, re-encrypts and uploads.
   Future<SSHHost> updateHost(SSHHost host) async {
     final session = await authService.currentSession();
     if (session == null) {
@@ -83,19 +81,18 @@ class HostRepository {
       return host;
     }
 
-    final passphrase = PassphraseManager.instance.get();
-    if (passphrase == null) throw Exception('Passphrase required to sync hosts');
+    final masterKey = PassphraseManager.instance.masterKey;
+    if (masterKey == null) throw Exception('Passphrase required to sync hosts');
 
-    final (:encryptedData, :salt) =
-        await CryptoService.encryptWithPassphrase(passphrase, host.toSyncJson());
+    final encryptedData = await CryptoService.encrypt(masterKey, host.toSyncJson());
 
     await apiClient.putJson(
       '/hosts/${host.id}',
-      {'encryptedData': encryptedData, 'salt': salt},
+      {'encryptedData': encryptedData},
       token: session.token,
     );
 
-    final updated = host.copyWith(encryptedData: encryptedData, salt: salt);
+    final updated = host.copyWith(encryptedData: encryptedData);
     await _syncCache(updated);
     return updated;
   }
@@ -118,7 +115,7 @@ class HostRepository {
   // ── Private helpers ──────────────────────────────────────────────────────
 
   Future<List<SSHHost>> _fetchAndDecryptHosts(String token) async {
-    final passphrase = PassphraseManager.instance.get();
+    final masterKey = PassphraseManager.instance.masterKey;
     final data = await apiClient.getJson('/hosts', token: token);
     final rawList = data['hosts'] as List<dynamic>? ?? [];
 
@@ -127,21 +124,15 @@ class HostRepository {
       final json = e as Map<String, dynamic>;
       final id = json['id'] as String;
       final encryptedData = json['encryptedData'] as String;
-      final salt = json['salt'] as String;
 
-      if (passphrase == null) continue; // can't decrypt without passphrase
+      if (masterKey == null) continue;
 
       try {
-        final plainJson = await CryptoService.decryptWithPassphrase(
-          passphrase,
-          encryptedData,
-          salt,
-        );
+        final plainJson = await CryptoService.decrypt(masterKey, encryptedData);
         final decoded = jsonDecode(plainJson) as Map<String, dynamic>;
-        hosts.add(SSHHost.fromDecryptedJson(id, decoded,
-            encryptedData: encryptedData, salt: salt));
+        hosts.add(SSHHost.fromDecryptedJson(id, decoded, encryptedData: encryptedData));
       } catch (_) {
-        // Decryption failure — skip this host (wrong passphrase or corrupt data)
+        // Decryption failure — skip this host
       }
     }
     return hosts;

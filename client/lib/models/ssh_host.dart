@@ -2,8 +2,9 @@ import 'dart:convert';
 
 /// An SSH host configuration.
 ///
-/// Sensitive fields (password, keyId) are encrypted into [encryptedData]+[salt]
-/// before being uploaded to the server. The server stores only the opaque blob.
+/// All sensitive fields (password, keyId, hostname, username) are encrypted into
+/// [encryptedData] using the user's master key before being uploaded to the server.
+/// The server stores only the opaque blob — no per-item salt is needed.
 ///
 /// [privateKey] is TRANSIENT — it is never stored or synced. It is resolved
 /// at connection time from the [keyId] reference in the keys table.
@@ -17,9 +18,8 @@ class SSHHost {
   final String? password;
   final bool isLocal;
 
-  // Zero-knowledge sync fields — null for local-only hosts
+  // Zero-knowledge sync field — null for local-only hosts
   final String? encryptedData;
-  final String? salt;
 
   // Transient: resolved from keyId at connection time, never stored or synced
   String? privateKey;
@@ -34,7 +34,6 @@ class SSHHost {
     this.password,
     this.isLocal = false,
     this.encryptedData,
-    this.salt,
     this.privateKey,
   });
 
@@ -48,7 +47,6 @@ class SSHHost {
     String? password,
     bool? isLocal,
     String? encryptedData,
-    String? salt,
     String? privateKey,
   }) {
     return SSHHost(
@@ -61,7 +59,6 @@ class SSHHost {
       password: password ?? this.password,
       isLocal: isLocal ?? this.isLocal,
       encryptedData: encryptedData ?? this.encryptedData,
-      salt: salt ?? this.salt,
       privateKey: privateKey ?? this.privateKey,
     );
   }
@@ -78,11 +75,10 @@ class SSHHost {
       password: json['password'] as String?,
       isLocal: json['isLocal'] as bool? ?? false,
       encryptedData: json['encryptedData'] as String?,
-      salt: json['salt'] as String?,
     );
   }
 
-  /// Serialise for local cache — no privateKey, no keyFilePath.
+  /// Serialise for local cache.
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -93,7 +89,6 @@ class SSHHost {
         'password': password,
         'isLocal': isLocal,
         'encryptedData': encryptedData,
-        'salt': salt,
       };
 
   /// Fields that get encrypted and uploaded to the server.
@@ -116,7 +111,6 @@ class SSHHost {
     String serverId,
     Map<String, dynamic> json, {
     String? encryptedData,
-    String? salt,
   }) {
     return SSHHost(
       id: serverId,
@@ -128,7 +122,6 @@ class SSHHost {
       password: json['password'] as String?,
       isLocal: json['isLocal'] as bool? ?? false,
       encryptedData: encryptedData,
-      salt: salt,
     );
   }
 }

@@ -10,29 +10,28 @@ class KeyRepository {
   final ApiClient apiClient;
   final AuthService authService;
 
-  /// Fetches all keys from the server and decrypts them using the in-memory passphrase.
-  /// Returns an empty list if the user is not logged in or passphrase is not set.
+  /// Fetches all keys from the server and decrypts them using the master key.
+  /// Returns an empty list if the user is not logged in or master key is not set.
   Future<List<SSHKey>> loadKeys() async {
     final session = await authService.currentSession();
     if (session == null) return [];
 
-    final passphrase = PassphraseManager.instance.get();
+    final masterKey = PassphraseManager.instance.masterKey;
 
     final res = await apiClient.getJson('/keys', token: session.token);
     final list = (res['keys'] as List<dynamic>? ?? [])
         .map((e) => SSHKey.fromApiJson(e as Map<String, dynamic>))
         .toList();
 
-    if (passphrase != null) {
+    if (masterKey != null) {
       for (final key in list) {
         try {
-          key.decryptedPrivateKey = await CryptoService.decryptWithPassphrase(
-            passphrase,
+          key.decryptedPrivateKey = await CryptoService.decrypt(
+            masterKey,
             key.encryptedData,
-            key.salt,
           );
         } catch (_) {
-          // Decryption failure (wrong passphrase or corrupt data) — leave null.
+          // Decryption failure — leave null.
         }
       }
     }
@@ -40,16 +39,15 @@ class KeyRepository {
     return list;
   }
 
-  /// Encrypts [privateKey] with the current passphrase and uploads to the server.
+  /// Encrypts [privateKey] with the master key and uploads to the server.
   Future<SSHKey> addKey(String label, String privateKey, {String? publicKey}) async {
     final session = await authService.currentSession();
     if (session == null) throw Exception('Login required to save keys');
 
-    final passphrase = PassphraseManager.instance.get();
-    if (passphrase == null) throw Exception('Passphrase required to save keys');
+    final masterKey = PassphraseManager.instance.masterKey;
+    if (masterKey == null) throw Exception('Passphrase required to save keys');
 
-    final (:encryptedData, :salt) =
-        await CryptoService.encryptWithPassphrase(passphrase, privateKey);
+    final encryptedData = await CryptoService.encrypt(masterKey, privateKey);
 
     final res = await apiClient.postJson(
       '/keys',
@@ -57,7 +55,6 @@ class KeyRepository {
         'label': label,
         'publicKey': publicKey,
         'encryptedData': encryptedData,
-        'salt': salt,
       },
       token: session.token,
     );
@@ -67,7 +64,7 @@ class KeyRepository {
     return key;
   }
 
-  /// Re-encrypts [privateKey] with a fresh salt and updates the server record.
+  /// Re-encrypts [privateKey] and updates the server record.
   Future<SSHKey> updateKey(
     String id, {
     String? label,
@@ -82,12 +79,9 @@ class KeyRepository {
     if (publicKey != null) body['publicKey'] = publicKey;
 
     if (privateKey != null) {
-      final passphrase = PassphraseManager.instance.get();
-      if (passphrase == null) throw Exception('Passphrase required to update key');
-      final (:encryptedData, :salt) =
-          await CryptoService.encryptWithPassphrase(passphrase, privateKey);
-      body['encryptedData'] = encryptedData;
-      body['salt'] = salt;
+      final masterKey = PassphraseManager.instance.masterKey;
+      if (masterKey == null) throw Exception('Passphrase required to update key');
+      body['encryptedData'] = await CryptoService.encrypt(masterKey, privateKey);
     }
 
     final res = await apiClient.putJson('/keys/$id', body, token: session.token);

@@ -128,6 +128,7 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     if (!_passphraseReady) {
       return PassphrasePage(
         isNewUser: _isFirstLogin,
+        userSalt: _session!.userSalt,
         onPassphraseSet: _onPassphraseSet,
       );
     }

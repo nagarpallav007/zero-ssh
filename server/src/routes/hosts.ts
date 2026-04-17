@@ -15,7 +15,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       select: {
         id: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -33,19 +32,17 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten().fieldErrors });
   }
-  const { encryptedData, salt } = parsed.data;
+  const { encryptedData } = parsed.data;
 
   try {
     const row = await prisma.host.create({
       data: {
         userId: req.user!.id,
         encryptedData,
-        salt,
       },
       select: {
         id: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -72,17 +69,15 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Host not found' });
     }
 
-    const { encryptedData, salt } = parsed.data;
+    const { encryptedData } = parsed.data;
     const row = await prisma.host.update({
       where: { id: req.params.id },
       data: {
         encryptedData: encryptedData ?? undefined,
-        salt: salt ?? undefined,
       },
       select: {
         id: true,
         encryptedData: true,
-        salt: true,
         createdAt: true,
         updatedAt: true,
       },

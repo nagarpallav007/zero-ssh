@@ -1,5 +1,5 @@
 // Prisma schema for zerossh-server
-// Zero-knowledge: server stores only client-encrypted blobs + Argon2id salts.
+// Zero-knowledge: server stores only client-encrypted blobs.
 // The server can never decrypt any SSH keys or host metadata.
 
 generator client {
@@ -15,6 +15,7 @@ model User {
   id              String    @id @default(uuid()) @db.Uuid
   email           String    @unique
   passwordHash    String    @map("password_hash")
+  salt            String                           // Argon2id salt for master key derivation
   emailVerified   Boolean   @default(false) @map("email_verified")
   emailVerifiedAt DateTime? @map("email_verified_at")
   provider        String    @default("password")
@@ -27,15 +28,14 @@ model User {
   @@map("users")
 }
 
-// SSH keys — private key is AES-256-GCM encrypted by the client.
-// Server stores only the ciphertext and the Argon2id salt.
+// SSH keys — private key is AES-256-GCM encrypted by the client using the master key.
+// Server stores only the ciphertext; no per-item salt needed.
 model Key {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @db.Uuid @map("user_id")
   label         String?
   publicKey     String?  @map("public_key")   // optional, not sensitive
   encryptedData String   @map("encrypted_data") // client-encrypted private key
-  salt          String                           // base64 Argon2id salt
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
@@ -47,12 +47,11 @@ model Key {
 }
 
 // SSH hosts — ALL metadata (hostname, username, port, password, keys) is
-// encrypted by the client. Server stores only an opaque blob + salt.
+// encrypted by the client. Server stores only an opaque blob.
 model Host {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @db.Uuid @map("user_id")
   encryptedData String   @map("encrypted_data") // client-encrypted host JSON
-  salt          String                           // base64 Argon2id salt
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
