@@ -16,10 +16,18 @@ class TerminalAppearance {
   });
 }
 
+const double defaultTerminalFontSize = 14.0;
+
 // Computed once — all themes share the same font settings.
 final _sharedTerminalStyle = TerminalStyle.fromTextStyle(
-  GoogleFonts.firaCode(fontSize: 14, height: 1.1, letterSpacing: 0),
+  GoogleFonts.firaCode(fontSize: defaultTerminalFontSize, height: 1.1, letterSpacing: 0),
 );
+
+/// Returns a [TerminalStyle] at an arbitrary font size, preserving all other
+/// font settings. Used by the pinch-to-zoom gesture in [TerminalPage].
+TerminalStyle terminalStyleAtSize(double fontSize) => TerminalStyle.fromTextStyle(
+      GoogleFonts.firaCode(fontSize: fontSize, height: 1.1, letterSpacing: 0),
+    );
 
 final terminalAppearances = <TerminalAppearance>[
   // ── Teal Dark (default) ───────────────────────────────────────────────────

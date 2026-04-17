@@ -42,6 +42,9 @@ class _TerminalPageState extends State<TerminalPage>
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
 
+  double _fontSize = defaultTerminalFontSize;
+  double? _scaleBaseFontSize;
+
   bool get _isLocal => widget.host.isLocal;
 
   @override
@@ -259,7 +262,7 @@ class _TerminalPageState extends State<TerminalPage>
       autofocus: true,
       autoResize: true,
       theme: widget.appearance.theme,
-      textStyle: widget.appearance.style,
+      textStyle: terminalStyleAtSize(_fontSize),
       cursorType: TerminalCursorType.block,
       hardwareKeyboardOnly: PlatformUtils.hasPhysicalKeyboard,
       padding: const EdgeInsets.all(8),
@@ -274,6 +277,20 @@ class _TerminalPageState extends State<TerminalPage>
               ? GestureDetector(
                   onLongPressStart: (details) =>
                       _showContextMenu(details.globalPosition),
+                  onScaleStart: (details) {
+                    if (details.pointerCount == 2) {
+                      _scaleBaseFontSize = _fontSize;
+                    }
+                  },
+                  onScaleUpdate: (details) {
+                    if (details.pointerCount == 2 && _scaleBaseFontSize != null) {
+                      final next = (_scaleBaseFontSize! * details.scale).clamp(8.0, 24.0);
+                      if ((next - _fontSize).abs() >= 0.5) {
+                        setState(() => _fontSize = next);
+                      }
+                    }
+                  },
+                  onScaleEnd: (_) => _scaleBaseFontSize = null,
                   child: terminalView,
                 )
               : terminalView,
