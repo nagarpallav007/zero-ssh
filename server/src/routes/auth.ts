@@ -180,6 +180,28 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signToken(user.id, user.email, user.emailVerified, user.provider);
+
+    // Auto-provision default workspace for pre-migration users who have none
+    const existingMembership = await prisma.workspaceMember.findFirst({
+      where: { userId: user.id },
+    });
+    if (!existingMembership) {
+      await prisma.$transaction(async (tx) => {
+        const ws = await tx.workspace.create({
+          data: { name: 'Personal', ownerId: user.id, isDefault: true },
+        });
+        await tx.workspaceMember.create({
+          data: {
+            workspaceId: ws.id,
+            userId: user.id,
+            role: 'owner',
+            inviteStatus: 'accepted',
+            joinedAt: new Date(),
+          },
+        });
+      });
+    }
+
     const workspaces = await getUserWorkspaces(user.id);
 
     return res.json({
