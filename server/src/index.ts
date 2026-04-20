@@ -4,8 +4,8 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { config } from './config';
 import authRoutes from './routes/auth';
-import keyRoutes from './routes/keys';
-import hostRoutes from './routes/hosts';
+import userRoutes from './routes/users';
+import workspaceRoutes from './routes/workspaces';
 import { logger } from './logger';
 
 const app = express();
@@ -38,8 +38,8 @@ app.use(globalLimiter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/auth', authRoutes);
-app.use('/keys', keyRoutes);
-app.use('/hosts', hostRoutes);
+app.use('/users', userRoutes);
+app.use('/workspaces', workspaceRoutes);
 
 const start = async () => {
   try {

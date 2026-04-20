@@ -1,6 +1,14 @@
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
+
+import '../models/workspace.dart';
+import '../services/api_client.dart';
+import '../services/auth_service.dart';
 import '../services/crypto_service.dart';
 import '../services/passphrase_manager.dart';
+import '../services/workspace_repository.dart';
 import '../theme/app_theme.dart';
 
 /// Passphrase entry screen shown after login.
@@ -8,17 +16,27 @@ import '../theme/app_theme.dart';
 /// [isNewUser] = true  → "Create passphrase" mode (confirm field + strength bar).
 /// [isNewUser] = false → "Enter passphrase" mode (single field).
 ///
-/// On submit, runs Argon2id(passphrase, userSalt) once to produce the master key
-/// stored in [PassphraseManager]. All subsequent session operations use pure AES.
+/// On submit:
+///   1. Argon2id(passphrase, userSalt) → master key → [PassphraseManager]
+///   2. Keypair bootstrap: decrypt existing X25519 keypair or generate + upload
+///   3. Default workspace key bootstrap: decrypt + cache or generate + upload
 class PassphrasePage extends StatefulWidget {
   final bool isNewUser;
-  final String userSalt; // from AuthSession, used for Argon2id derivation
+  final String userSalt;
+  final AuthSession authSession;
+  final ApiClient apiClient;
+  final AuthService authService;
+  final WorkspaceRepository workspaceRepository;
   final VoidCallback onPassphraseSet;
 
   const PassphrasePage({
     super.key,
     required this.isNewUser,
     required this.userSalt,
+    required this.authSession,
+    required this.apiClient,
+    required this.authService,
+    required this.workspaceRepository,
     required this.onPassphraseSet,
   });
 
@@ -81,13 +99,84 @@ class _PassphrasePageState extends State<PassphrasePage> {
     });
 
     try {
+      // Step 1 — Derive master key
       final masterKey = await CryptoService.deriveMasterKey(p, widget.userSalt);
       PassphraseManager.instance.setMasterKey(masterKey);
+
+      // Step 2 — Keypair bootstrap
+      final session = widget.authSession;
+      final SimpleKeyPair keyPair;
+      if (session.encryptedPrivateKey != null && session.publicKey != null) {
+        // Decrypt existing private key with master key
+        final privB64 =
+            await CryptoService.decrypt(masterKey, session.encryptedPrivateKey!);
+        final privBytes = base64.decode(privB64);
+        final pubBytes = base64.decode(session.publicKey!);
+        keyPair = SimpleKeyPairData(
+          privBytes,
+          publicKey: SimplePublicKey(pubBytes, type: KeyPairType.x25519),
+          type: KeyPairType.x25519,
+        );
+      } else {
+        // Generate a new X25519 keypair and upload it
+        keyPair = await CryptoService.generateKeyPair();
+        final pub = await keyPair.extractPublicKey();
+        final privData = await keyPair.extract();
+        final pubB64 = base64.encode(pub.bytes);
+        final privB64 = base64.encode(privData.bytes);
+        final encPriv = await CryptoService.encrypt(masterKey, privB64);
+        await widget.apiClient.putJson(
+          '/auth/keypair',
+          {'publicKey': pubB64, 'encryptedPrivateKey': encPriv},
+          token: session.token,
+        );
+      }
+      PassphraseManager.instance.setKeyPair(keyPair);
+
+      // Step 3 — Default workspace key bootstrap
+      // session.workspaces may be stale (empty) for users who were logged in
+      // before the workspace migration. Fetch fresh from the API if needed.
+      List<WorkspaceSession> workspaces = session.workspaces;
+      if (workspaces.isEmpty) {
+        try {
+          final res = await widget.apiClient
+              .getJson('/workspaces', token: session.token);
+          workspaces = (res['workspaces'] as List<dynamic>? ?? [])
+              .map((e) => WorkspaceSession.fromJson(e as Map<String, dynamic>))
+              .toList();
+          await widget.authService.saveWorkspacesCache(workspaces);
+        } catch (_) {}
+      }
+      final defaultWs =
+          workspaces.where((w) => w.isDefault).firstOrNull;
+      if (defaultWs != null) {
+        if (defaultWs.encryptedWorkspaceKey == null) {
+          // First time: generate, ECIES-encrypt for self, upload
+          final wsKey = CryptoService.generateWorkspaceKey();
+          final pub = await keyPair.extractPublicKey();
+          final wsKeyB64 = base64.encode(await wsKey.extractBytes());
+          final encWsKey = await CryptoService.eciesEncrypt(pub, wsKeyB64);
+          await widget.apiClient.putJson(
+            '/auth/workspaces/${defaultWs.id}/key',
+            {'encryptedWorkspaceKey': encWsKey},
+            token: session.token,
+          );
+          widget.workspaceRepository.cacheWorkspaceKey(defaultWs.id, wsKey);
+          // Persist the new encryptedWorkspaceKey so cold restarts can decrypt it
+          await widget.authService.updateWorkspaceKeyCache(
+              defaultWs.id, encWsKey);
+        } else {
+          // Decrypt existing workspace key and cache it
+          await widget.workspaceRepository.getWorkspaceKey(
+              defaultWs.id, defaultWs.encryptedWorkspaceKey!);
+        }
+      }
+
       widget.onPassphraseSet();
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to derive encryption key. Try again.';
+          _error = 'Failed to unlock. Check your passphrase and try again.';
           _deriving = false;
         });
       }
@@ -172,14 +261,17 @@ class _PassphrasePageState extends State<PassphrasePage> {
                       controller: _passphraseCtrl,
                       obscureText: _obscure,
                       onChanged: (_) => setState(() {}),
-                      textInputAction: widget.isNewUser ? TextInputAction.next : TextInputAction.done,
+                      textInputAction:
+                          widget.isNewUser ? TextInputAction.next : TextInputAction.done,
                       onSubmitted: widget.isNewUser ? null : (_) => _submit(),
                       decoration: InputDecoration(
                         labelText: widget.isNewUser ? 'New Passphrase' : 'Passphrase',
                         prefixIcon: const Icon(Icons.key_rounded, size: 18),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             size: 18,
                           ),
                           onPressed: () => setState(() => _obscure = !_obscure),
@@ -238,7 +330,8 @@ class _PassphrasePageState extends State<PassphrasePage> {
                           backgroundColor: AppColors.accent,
                           foregroundColor: Colors.black,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                         child: _deriving
                             ? const SizedBox(
@@ -251,7 +344,8 @@ class _PassphrasePageState extends State<PassphrasePage> {
                               )
                             : Text(
                                 widget.isNewUser ? 'Set Passphrase' : 'Unlock',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),
@@ -262,7 +356,10 @@ class _PassphrasePageState extends State<PassphrasePage> {
                       const Text(
                         'Remember this passphrase — it cannot be recovered. '
                         'Without it, your encrypted data cannot be decrypted.',
-                        style: TextStyle(color: AppColors.textTertiary, fontSize: 11, height: 1.5),
+                        style: TextStyle(
+                            color: AppColors.textTertiary,
+                            fontSize: 11,
+                            height: 1.5),
                         textAlign: TextAlign.center,
                       ),
                     ],

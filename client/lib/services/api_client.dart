@@ -49,6 +49,18 @@ class ApiClient {
     }
   }
 
+  Future<void> deleteWithBody(String path, Map<String, dynamic> body, {String? token}) async {
+    final req = http.Request('DELETE', _uri(path));
+    req.headers.addAll(_headers(token: token));
+    req.body = jsonEncode(body);
+    final streamed = await _client.send(req);
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode == 401) onUnauthorized?.call();
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, res.body);
+    }
+  }
+
   Map<String, String> _headers({String? token}) => {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',

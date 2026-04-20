@@ -4,6 +4,7 @@ import '../models/ssh_host.dart';
 import '../services/auth_service.dart';
 import '../services/host_repository.dart';
 import '../services/key_repository.dart';
+import '../services/workspace_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/terminal_themes.dart';
 import '../utils/platform_utils.dart';
@@ -28,9 +29,11 @@ class _TabData {
 class TerminalTabsPage extends StatefulWidget {
   final HostRepository hostRepository;
   final KeyRepository keyRepository;
+  final WorkspaceRepository? workspaceRepository;
   final AuthService authService;
   final bool loggedIn;
   final String? userEmail;
+  final String plan;
   final VoidCallback onLogout;
   final VoidCallback? onLogin; // non-null in guest mode
   final TerminalAppearance defaultAppearance;
@@ -40,9 +43,11 @@ class TerminalTabsPage extends StatefulWidget {
     super.key,
     required this.hostRepository,
     required this.keyRepository,
+    this.workspaceRepository,
     required this.authService,
     required this.loggedIn,
     this.userEmail,
+    this.plan = 'free',
     required this.onLogout,
     this.onLogin,
     required this.defaultAppearance,
@@ -118,6 +123,9 @@ class _TerminalTabsPageState extends State<TerminalTabsPage> {
         onHostOpen: _openSessionTab,
         hostRepository: widget.hostRepository,
         keyRepository: widget.keyRepository,
+        workspaceRepository: widget.workspaceRepository,
+        authService: widget.authService,
+        plan: widget.plan,
         loggedIn: widget.loggedIn,
         userEmail: widget.userEmail,
         onLogin: widget.onLogin,

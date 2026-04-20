@@ -10,6 +10,7 @@ import 'services/auth_service.dart';
 import 'services/host_repository.dart';
 import 'services/key_repository.dart';
 import 'services/passphrase_manager.dart';
+import 'services/workspace_repository.dart';
 import 'theme/app_theme.dart';
 import 'theme/terminal_themes.dart';
 import 'utils/platform_utils.dart';
@@ -32,10 +33,16 @@ class ZeroSSHApp extends StatefulWidget {
 class _ZeroSSHAppState extends State<ZeroSSHApp> {
   late final ApiClient _apiClient = ApiClient(onUnauthorized: _onLogout);
   late final AuthService _authService = AuthService(apiClient: _apiClient);
-  late final HostRepository _hostRepository =
-      HostRepository(apiClient: _apiClient, authService: _authService);
-  late final KeyRepository _keyRepository =
-      KeyRepository(apiClient: _apiClient, authService: _authService);
+  late final WorkspaceRepository _workspaceRepository =
+      WorkspaceRepository(apiClient: _apiClient, authService: _authService);
+  late final HostRepository _hostRepository = HostRepository(
+    authService: _authService,
+    workspaceRepository: _workspaceRepository,
+  );
+  late final KeyRepository _keyRepository = KeyRepository(
+    authService: _authService,
+    workspaceRepository: _workspaceRepository,
+  );
 
   // Computed once — ThemeData is immutable, no need to rebuild it on every setState.
   final _appTheme = buildAppTheme();
@@ -81,6 +88,7 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
 
   Future<void> _onLogout() async {
     PassphraseManager.instance.clear();
+    _workspaceRepository.clearCache();
     await Future.wait([
       _authService.logout(),
       _hostRepository.clearCache(),
@@ -135,6 +143,10 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
       return PassphrasePage(
         isNewUser: _isFirstLogin,
         userSalt: _session!.userSalt,
+        authSession: _session!,
+        apiClient: _apiClient,
+        authService: _authService,
+        workspaceRepository: _workspaceRepository,
         onPassphraseSet: _onPassphraseSet,
       );
     }
@@ -146,9 +158,11 @@ class _ZeroSSHAppState extends State<ZeroSSHApp> {
     return TerminalTabsPage(
       hostRepository: _hostRepository,
       keyRepository: _keyRepository,
+      workspaceRepository: _session != null ? _workspaceRepository : null,
       authService: _authService,
       loggedIn: _session != null,
       userEmail: _session?.email,
+      plan: _session?.plan ?? 'free',
       onLogout: _onLogout,
       onLogin: _guestMode ? _onRequestLogin : null,
       defaultAppearance: _defaultAppearance,

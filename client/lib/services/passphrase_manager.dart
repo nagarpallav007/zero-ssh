@@ -16,6 +16,7 @@ class PassphraseManager {
   static final PassphraseManager instance = PassphraseManager._();
 
   SecretKey? _masterKey;
+  SimpleKeyPair? _keyPair;
 
   /// Store the derived master key for this session.
   void setMasterKey(SecretKey key) => _masterKey = key;
@@ -26,6 +27,15 @@ class PassphraseManager {
   /// True if the master key has been derived for this session.
   bool get isSet => _masterKey != null;
 
-  /// Clears the master key from memory (call on logout).
-  void clear() => _masterKey = null;
+  /// Store the user's X25519 keypair for ECIES workspace key operations.
+  void setKeyPair(SimpleKeyPair kp) => _keyPair = kp;
+
+  /// Returns the X25519 keypair, or null if not yet set.
+  SimpleKeyPair? get keyPair => _keyPair;
+
+  /// Clears all in-memory secrets (call on logout).
+  void clear() {
+    _masterKey = null;
+    _keyPair = null;
+  }
 }

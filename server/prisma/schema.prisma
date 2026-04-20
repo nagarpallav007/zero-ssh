@@ -12,52 +12,93 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  email           String    @unique
-  passwordHash    String    @map("password_hash")
-  salt            String                           // Argon2id salt for master key derivation
-  emailVerified   Boolean   @default(false) @map("email_verified")
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  provider        String    @default("password")
-  providerId      String?   @map("provider_id")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id                   String    @id @default(uuid()) @db.Uuid
+  email                String    @unique
+  passwordHash         String    @map("password_hash")
+  salt                 String                           // Argon2id salt for master key derivation
+  publicKey            String?   @map("public_key")    // X25519 public key (not sensitive)
+  encryptedPrivateKey  String?   @map("encrypted_private_key") // X25519 private key encrypted with masterKey
+  plan                 String    @default("free") @map("plan") // "free" | "trial" | "pro"
+  emailVerified        Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt      DateTime? @map("email_verified_at")
+  provider             String    @default("password")
+  providerId           String?   @map("provider_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
-  keys  Key[]
-  hosts Host[]
+  ownedWorkspaces      Workspace[]
+  workspaceMemberships WorkspaceMember[]
 
   @@map("users")
 }
 
-// SSH keys — private key is AES-256-GCM encrypted by the client using the master key.
-// Server stores only the ciphertext; no per-item salt needed.
-model Key {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid @map("user_id")
-  label         String?
-  publicKey     String?  @map("public_key")   // optional, not sensitive
-  encryptedData String   @map("encrypted_data") // client-encrypted private key
-
+// A workspace groups hosts and keys. Every user has a default personal workspace.
+// Additional workspaces can be shared with other users (team workspaces).
+model Workspace {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(128)
+  ownerId   String   @db.Uuid @map("owner_id")
+  isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  owner   User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members WorkspaceMember[]
+  hosts   Host[]
+  keys    Key[]
 
-  @@index([userId], name: "keys_user_id_idx")
-  @@map("keys")
+  @@index([ownerId], name: "workspaces_owner_id_idx")
+  @@map("workspaces")
+}
+
+// Membership of a user in a workspace, including the workspace key encrypted for that user.
+model WorkspaceMember {
+  id                    String    @id @default(uuid()) @db.Uuid
+  workspaceId           String    @db.Uuid @map("workspace_id")
+  userId                String    @db.Uuid @map("user_id")
+  role                  String    @map("role")                    // "owner" | "admin" | "member"
+  encryptedWorkspaceKey String?   @map("encrypted_workspace_key") // ECIES blob: ephPubB64:nonce:mac:cipher
+  inviteStatus          String    @default("accepted") @map("invite_status") // "pending" | "accepted"
+  inviteToken           String?   @unique @map("invite_token")
+  inviteEmail           String?   @map("invite_email")
+  invitedAt             DateTime  @default(now()) @map("invited_at")
+  joinedAt              DateTime? @map("joined_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId], name: "workspace_member_unique")
+  @@index([userId], name: "workspace_members_user_id_idx")
+  @@map("workspace_members")
 }
 
 // SSH hosts — ALL metadata (hostname, username, port, password, keys) is
-// encrypted by the client. Server stores only an opaque blob.
+// encrypted by the client using the workspace key. Server stores only an opaque blob.
 model Host {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid @map("user_id")
-  encryptedData String   @map("encrypted_data") // client-encrypted host JSON
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid @map("workspace_id")
+  encryptedData String    @map("encrypted_data")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@index([userId], name: "hosts_user_id_idx")
+  @@index([workspaceId], name: "hosts_workspace_id_idx")
   @@map("hosts")
+}
+
+// SSH keys — private key is AES-256-GCM encrypted by the client using the workspace key.
+model Key {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @db.Uuid @map("workspace_id")
+  label         String?
+  publicKey     String?  @map("public_key")    // optional, not sensitive
+  encryptedData String   @map("encrypted_data")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId], name: "keys_workspace_id_idx")
+  @@map("keys")
 }
